@@ -6,6 +6,8 @@
 
 协议细节见 [PROTOCOL.md](PROTOCOL.md)（含逆向方法论、签名算法、全部端点）。
 
+> **完整使用指南**（HA 集成安装、自动化示例、Python/CLI 用法、FAQ）见 [GUIDE.md](GUIDE.md)。
+
 ## 功能
 
 - 账号密码登录（AES 加密用户名 + 双 SHA256 密码派生 + x-ca-* HMAC 签名）
