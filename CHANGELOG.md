@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.3.1
+
+- Add the official Hassfest validation workflow required for HACS default inclusion.
+- Mark the integration as specific to the Chinese MosHome service in HACS metadata.
+
 ## 1.3.0
 
 - Restore capability-first discovery for standard `PowerSwitch` schemas.

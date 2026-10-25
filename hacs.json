@@ -1,5 +1,6 @@
 {
   "name": "Bull MosHome",
+  "country": ["CN"],
   "render_readme": true,
   "homeassistant": "2024.6.0"
 }
