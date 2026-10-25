@@ -1,4 +1,4 @@
-# bull-iot-reverse — 公牛智家云独立客户端
+# bull-moshome — 公牛智家云独立逆向客户端 + Home Assistant 集成
 
 对公牛智家云（MosHome / `api.iotbull.com`）协议**独立逆向**后实现的 Python 客户端
 与协议文档。不依赖 hass-iotbull 或任何第三方集成代码，仅依赖 `requests`、

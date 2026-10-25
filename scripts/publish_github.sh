@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 发布 bull-iot-reverse 到 GitHub。
+# 发布 bull-moshome 到 GitHub。
 #
 # 用法:
 #   source /root/.codebuddy/skills/github-connector/scripts/get_token.sh github
@@ -8,7 +8,7 @@
 # 依赖: git、curl、python3。Token 通过 GITHUB_TOKEN 环境变量传入，不落盘。
 set -euo pipefail
 
-REPO_NAME="${1:-bull-iot-reverse}"
+REPO_NAME="${1:-bull-moshome}"
 VISIBILITY="${2:-public}"
 
 if [ -z "${GITHUB_TOKEN:-}" ]; then

@@ -143,7 +143,7 @@ automation:
 
 ```bash
 pip install requests cryptography paho-mqtt
-git clone <本仓库> && cd bull-iot-reverse   # 或直接把 bull_iot/ 目录拷进你的项目
+git clone <本仓库> && cd bull-moshome   # 或直接把 bull_iot/ 目录拷进你的项目
 ```
 
 ### 3.2 快速开始
