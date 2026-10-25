@@ -1,0 +1,573 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BULL IOT REVERSE — 公牛智家云独立逆向 · 使用指南</title>
+<style>
+  :root {
+    --bg: #050810;
+    --bg-2: #0a1020;
+    --panel: rgba(13, 22, 41, 0.72);
+    --line: rgba(0, 240, 255, 0.14);
+    --line-strong: rgba(0, 240, 255, 0.35);
+    --cyan: #00f0ff;
+    --cyan-dim: rgba(0, 240, 255, 0.65);
+    --violet: #8b5cf6;
+    --amber: #fbbf24;
+    --green: #34d399;
+    --text: #dbe7f4;
+    --muted: #7d92ad;
+    --mono: "JetBrains Mono", "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    line-height: 1.75;
+    overflow-x: hidden;
+    background-image:
+      linear-gradient(rgba(0, 240, 255, 0.025) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(0, 240, 255, 0.025) 1px, transparent 1px);
+    background-size: 44px 44px;
+  }
+  /* 顶部光晕 + 扫描线 */
+  body::before {
+    content: ""; position: fixed; inset: 0; pointer-events: none; z-index: 0;
+    background:
+      radial-gradient(ellipse 80% 50% at 50% -10%, rgba(0, 240, 255, 0.12), transparent 60%),
+      radial-gradient(ellipse 60% 40% at 85% 30%, rgba(139, 92, 246, 0.07), transparent 60%);
+  }
+  body::after {
+    content: ""; position: fixed; left: 0; right: 0; height: 120px; z-index: 1; pointer-events: none;
+    background: linear-gradient(to bottom, transparent, rgba(0, 240, 255, 0.035), transparent);
+    animation: scan 7s linear infinite;
+  }
+  @keyframes scan { 0% { top: -120px; } 100% { top: 110vh; } }
+
+  ::selection { background: rgba(0, 240, 255, 0.28); color: #fff; }
+  ::-webkit-scrollbar { width: 10px; }
+  ::-webkit-scrollbar-track { background: var(--bg); }
+  ::-webkit-scrollbar-thumb { background: #16233f; border-radius: 5px; }
+  ::-webkit-scrollbar-thumb:hover { background: #1f3358; }
+
+  /* 进度条 */
+  #progress { position: fixed; top: 0; left: 0; height: 2px; width: 0; z-index: 100;
+    background: linear-gradient(90deg, var(--cyan), var(--violet)); box-shadow: 0 0 12px var(--cyan); }
+
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 2; }
+
+  /* ============ HERO ============ */
+  header { padding: 96px 0 64px; text-align: left; }
+  .badge-row { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 28px; }
+  .badge {
+    font-family: var(--mono); font-size: 12px; letter-spacing: 0.08em;
+    border: 1px solid var(--line-strong); color: var(--cyan-dim);
+    padding: 5px 14px; border-radius: 999px; background: rgba(0, 240, 255, 0.05);
+  }
+  .badge b { color: var(--cyan); font-weight: 600; }
+  h1 {
+    font-size: clamp(40px, 7vw, 72px); line-height: 1.08; font-weight: 800; letter-spacing: -0.01em;
+    background: linear-gradient(120deg, #fff 30%, var(--cyan) 65%, var(--violet));
+    -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
+    text-shadow: 0 0 60px rgba(0, 240, 255, 0.25);
+  }
+  .subtitle { font-family: var(--mono); color: var(--cyan); font-size: clamp(14px, 2.4vw, 19px); margin: 18px 0 8px; min-height: 1.6em; }
+  .subtitle .cursor { display: inline-block; width: 10px; height: 1.1em; background: var(--cyan); vertical-align: text-bottom; animation: blink 1s steps(1) infinite; box-shadow: 0 0 8px var(--cyan); }
+  @keyframes blink { 50% { opacity: 0; } }
+  .lede { color: var(--muted); max-width: 760px; font-size: 16px; margin-top: 14px; }
+  .lede code { font-family: var(--mono); color: var(--cyan); background: rgba(0,240,255,.07); padding: 1px 7px; border-radius: 4px; font-size: 0.92em; }
+  .hero-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 14px; margin-top: 44px; }
+  .stat { border: 1px solid var(--line); background: var(--panel); padding: 18px 20px; border-radius: 10px; position: relative; overflow: hidden; }
+  .stat::before { content: ""; position: absolute; top: 0; left: 0; width: 34px; height: 2px; background: var(--cyan); box-shadow: 0 0 8px var(--cyan); }
+  .stat .num { font-family: var(--mono); font-size: 26px; color: var(--cyan); font-weight: 700; }
+  .stat .lbl { font-size: 12px; color: var(--muted); margin-top: 2px; }
+
+  /* ============ 导航 ============ */
+  nav { position: sticky; top: 0; z-index: 50; background: rgba(5, 8, 16, 0.85); backdrop-filter: blur(12px); border-block: 1px solid var(--line); }
+  nav .wrap { display: flex; gap: 4px; overflow-x: auto; padding-top: 10px; padding-bottom: 10px; scrollbar-width: none; }
+  nav::-webkit-scrollbar { display: none; }
+  nav a {
+    font-family: var(--mono); font-size: 13px; color: var(--muted); text-decoration: none;
+    padding: 6px 14px; border-radius: 6px; white-space: nowrap; border: 1px solid transparent; transition: all .2s;
+  }
+  nav a:hover { color: var(--cyan); border-color: var(--line-strong); background: rgba(0,240,255,.05); }
+  nav a.active { color: var(--cyan); border-color: var(--line-strong); background: rgba(0,240,255,.08); }
+
+  /* ============ 章节 ============ */
+  section { padding: 72px 0 8px; }
+  .kicker { font-family: var(--mono); color: var(--violet); font-size: 13px; letter-spacing: 0.25em; margin-bottom: 10px; }
+  .kicker::before { content: "// "; color: var(--cyan); }
+  h2 { font-size: clamp(24px, 4vw, 34px); font-weight: 750; margin-bottom: 14px; color: #fff; }
+  h2 .glow { text-shadow: 0 0 24px rgba(0,240,255,.5); }
+  .sec-lede { color: var(--muted); max-width: 720px; margin-bottom: 36px; }
+
+  /* HUD 卡片 */
+  .card {
+    border: 1px solid var(--line); background: var(--panel); border-radius: 12px; padding: 26px 28px;
+    position: relative; transition: transform .25s, border-color .25s, box-shadow .25s;
+  }
+  .card:hover { border-color: var(--line-strong); box-shadow: 0 0 0 1px rgba(0,240,255,.08), 0 12px 40px rgba(0,0,0,.45); transform: translateY(-3px); }
+  .card .corner { position: absolute; width: 14px; height: 14px; border-color: var(--cyan); border-style: solid; opacity: .8; }
+  .card .corner.tr { top: -1px; right: -1px; border-width: 1px 1px 0 0; }
+  .card .corner.bl { bottom: -1px; left: -1px; border-width: 0 0 1px 1px; }
+  .grid-3 { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 18px; }
+  .grid-2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 18px; }
+
+  .card h3 { font-size: 18px; color: #fff; margin-bottom: 10px; display: flex; align-items: center; gap: 10px; }
+  .tag { font-family: var(--mono); font-size: 11px; padding: 2px 8px; border-radius: 4px; letter-spacing: .06em; }
+  .tag.rec { background: rgba(52, 211, 153, .12); color: var(--green); border: 1px solid rgba(52,211,153,.3); }
+  .tag.dev { background: rgba(139, 92, 246, .12); color: #c4b5fd; border: 1px solid rgba(139,92,246,.3); }
+  .tag.cli { background: rgba(251, 191, 36, .1); color: var(--amber); border: 1px solid rgba(251,191,36,.3); }
+  .card p { color: var(--muted); font-size: 14.5px; }
+  .card ul { list-style: none; margin-top: 12px; }
+  .card li { color: var(--muted); font-size: 14px; padding: 4px 0 4px 20px; position: relative; }
+  .card li::before { content: "▸"; position: absolute; left: 2px; color: var(--cyan); }
+
+  /* 步骤条 */
+  .steps { display: grid; gap: 14px; counter-reset: step; margin: 26px 0; }
+  .step { display: flex; gap: 18px; align-items: flex-start; border: 1px solid var(--line); background: var(--panel); border-radius: 10px; padding: 18px 22px; }
+  .step .no {
+    counter-increment: step; font-family: var(--mono); font-size: 20px; color: var(--cyan); flex-shrink: 0;
+    width: 46px; height: 46px; border: 1px solid var(--line-strong); border-radius: 8px;
+    display: grid; place-items: center; background: rgba(0,240,255,.06); box-shadow: inset 0 0 18px rgba(0,240,255,.08);
+  }
+  .step .no::before { content: "0" counter(step); }
+  .step h4 { color: #fff; font-size: 15.5px; margin-bottom: 4px; }
+  .step p { color: var(--muted); font-size: 14px; }
+  .step code, p code, td code, li code { font-family: var(--mono); color: var(--cyan); background: rgba(0,240,255,.07); padding: 1px 6px; border-radius: 4px; font-size: .88em; }
+
+  /* 终端代码块 */
+  .terminal { border: 1px solid var(--line); border-radius: 10px; overflow: hidden; margin: 18px 0; background: #070d18; }
+  .term-bar { display: flex; align-items: center; gap: 8px; padding: 10px 14px; background: rgba(0,240,255,.04); border-bottom: 1px solid var(--line); }
+  .dot { width: 11px; height: 11px; border-radius: 50%; }
+  .dot.r { background: #ff5f57; } .dot.y { background: #febc2e; } .dot.g { background: #28c840; }
+  .term-title { font-family: var(--mono); font-size: 12px; color: var(--muted); margin-left: 6px; }
+  .copy-btn { margin-left: auto; font-family: var(--mono); font-size: 11px; color: var(--cyan-dim); background: none; border: 1px solid var(--line-strong); border-radius: 5px; padding: 3px 10px; cursor: pointer; transition: all .2s; }
+  .copy-btn:hover { color: #fff; background: rgba(0,240,255,.12); }
+  pre { padding: 18px 20px; overflow-x: auto; font-family: var(--mono); font-size: 13.2px; line-height: 1.7; }
+  pre .c { color: #546a8a; font-style: italic; }          /* 注释 */
+  pre .k { color: var(--violet); }                        /* 关键字 */
+  pre .s { color: var(--green); }                         /* 字符串 */
+  pre .f { color: var(--cyan); }                          /* 函数/命令 */
+  pre .n { color: var(--amber); }                         /* 数字/标识符 */
+  pre .p { color: #5d7391; }                              /* 标点 */
+
+  /* 表格 */
+  table { width: 100%; border-collapse: collapse; margin: 18px 0; font-size: 14px; }
+  th { font-family: var(--mono); text-align: left; color: var(--cyan); font-weight: 600; font-size: 12.5px; letter-spacing: .05em;
+       padding: 10px 14px; border-bottom: 1px solid var(--line-strong); background: rgba(0,240,255,.04); }
+  td { padding: 10px 14px; border-bottom: 1px solid var(--line); color: var(--muted); vertical-align: top; }
+  td:first-child { color: var(--text); font-family: var(--mono); font-size: 13px; white-space: nowrap; }
+  tr:hover td { background: rgba(0,240,255,.03); }
+
+  /* 协议网格 */
+  .proto-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 14px; }
+  .proto { border: 1px solid var(--line); background: var(--panel); border-radius: 10px; padding: 20px 22px; position: relative; }
+  .proto .idx { position: absolute; top: 14px; right: 16px; font-family: var(--mono); font-size: 11px; color: rgba(0,240,255,.35); }
+  .proto h4 { font-family: var(--mono); color: var(--cyan); font-size: 14px; margin-bottom: 8px; }
+  .proto p { color: var(--muted); font-size: 13.5px; }
+
+  /* FAQ */
+  details { border: 1px solid var(--line); background: var(--panel); border-radius: 10px; margin-bottom: 12px; overflow: hidden; }
+  details[open] { border-color: var(--line-strong); }
+  summary { cursor: pointer; list-style: none; padding: 16px 22px; display: flex; align-items: center; gap: 12px; color: var(--text); font-weight: 600; font-size: 15px; }
+  summary::-webkit-details-marker { display: none; }
+  summary::before { content: "?"; font-family: var(--mono); color: var(--cyan); border: 1px solid var(--line-strong); width: 24px; height: 24px; border-radius: 6px; display: grid; place-items: center; font-size: 12px; flex-shrink: 0; background: rgba(0,240,255,.06); }
+  details[open] summary::before { content: "▾"; }
+  details .a { padding: 0 22px 18px 58px; color: var(--muted); font-size: 14px; }
+  details .a code { font-family: var(--mono); color: var(--cyan); background: rgba(0,240,255,.07); padding: 1px 6px; border-radius: 4px; font-size: .88em; }
+
+  /* 提示框 */
+  .note { border-left: 3px solid var(--amber); background: rgba(251,191,36,.06); border-radius: 0 10px 10px 0; padding: 14px 20px; margin: 16px 0; color: #e8d9b0; font-size: 14px; }
+  .note b { color: var(--amber); }
+
+  footer { margin-top: 96px; border-top: 1px solid var(--line); padding: 40px 0 60px; }
+  .foot-grid { display: flex; flex-wrap: wrap; gap: 26px; justify-content: space-between; align-items: flex-start; }
+  .foot-links { display: flex; flex-wrap: wrap; gap: 18px; }
+  .foot-links a { font-family: var(--mono); font-size: 13px; color: var(--muted); text-decoration: none; transition: color .2s; }
+  .foot-links a:hover { color: var(--cyan); text-shadow: 0 0 12px rgba(0,240,255,.6); }
+  .disclaimer { font-size: 12.5px; color: #4d6076; margin-top: 18px; max-width: 640px; }
+
+  /* 入场动画 */
+  .reveal { opacity: 0; transform: translateY(26px); transition: opacity .7s ease, transform .7s ease; }
+  .reveal.in { opacity: 1; transform: none; }
+
+  @media (max-width: 640px) {
+    header { padding: 64px 0 48px; }
+    section { padding: 52px 0 4px; }
+    .step { flex-direction: row; }
+  }
+</style>
+</head>
+<body>
+<div id="progress"></div>
+
+<header>
+  <div class="wrap">
+    <div class="badge-row">
+      <span class="badge"><b>PROTOCOL</b> · REVERSE ENGINEERED</span>
+      <span class="badge"><b>HA</b> · CUSTOM INTEGRATION</span>
+      <span class="badge"><b>MQTT</b> · REALTIME PUSH</span>
+      <span class="badge"><b>LICENSE</b> · MIT</span>
+    </div>
+    <h1>BULL IOT<br>REVERSE</h1>
+    <div class="subtitle"><span id="typed"></span><span class="cursor"></span></div>
+    <p class="lede">
+      公牛智家云（MosHome / <code>api.iotbull.com</code>）的<b style="color:var(--text)">独立协议逆向</b>成果：
+      HTTP 客户端 + MQTT 实时通道 + Home Assistant 自定义集成。
+      不依赖、不复用 hass-iotbull 或任何第三方集成代码，全部签名与加密算法经线上网关实测验证。
+    </p>
+    <div class="hero-stats">
+      <div class="stat"><div class="num">448</div><div class="lbl">台真实设备实测拉取</div></div>
+      <div class="stat"><div class="num">1117</div><div class="lbl">条跨家庭设备记录</div></div>
+      <div class="stat"><div class="num">15/15</div><div class="lbl">集成端到端测试通过</div></div>
+      <div class="stat"><div class="num">4/4</div><div class="lbl">线上签名探活通过</div></div>
+    </div>
+  </div>
+</header>
+
+<nav>
+  <div class="wrap">
+    <a href="#ways">三种用法</a>
+    <a href="#ha">HA 集成</a>
+    <a href="#python">Python 客户端</a>
+    <a href="#cli">命令行</a>
+    <a href="#protocol">协议要点</a>
+    <a href="#faq">FAQ</a>
+    <a href="#security">安全</a>
+  </div>
+</nav>
+
+<main class="wrap">
+
+<!-- ==================== 三种用法 ==================== -->
+<section id="ways">
+  <div class="kicker">ENTRY POINTS</div>
+  <h2 class="glow">三种使用方式</h2>
+  <p class="sec-lede">按你的角色选一条路径。绝大多数智能家居玩家选第一种即可。</p>
+  <div class="grid-3">
+    <div class="card reveal">
+      <span class="corner tr"></span><span class="corner bl"></span>
+      <h3>Home Assistant 集成 <span class="tag rec">推荐</span></h3>
+      <p>解压即用的自定义组件，设备变成 HA 的开关 / 传感器 / 在线状态实体，直接接入自动化与面板。</p>
+      <ul>
+        <li>多通道开关逐路暴露，名称取 App 昵称</li>
+        <li>MQTT 秒级回推 + 轮询兜底</li>
+        <li>凭证失效自动弹窗重验，不用重加</li>
+      </ul>
+    </div>
+    <div class="card reveal">
+      <span class="corner tr"></span><span class="corner bl"></span>
+      <h3>Python 客户端 <span class="tag dev">DEV</span></h3>
+      <p>纯 Python 库，仅依赖 requests / cryptography / paho-mqtt，适合自建脚本与二次开发。</p>
+      <ul>
+        <li>登录 / 设备 / 控制 / 服务调用全接口</li>
+        <li>token 自动刷新与失效重试</li>
+        <li>增量设备刷新，适合定时巡检</li>
+      </ul>
+    </div>
+    <div class="card reveal">
+      <span class="corner tr"></span><span class="corner bl"></span>
+      <h3>命令行工具 <span class="tag cli">CLI</span></h3>
+      <p>不写代码即可探测账号下所有设备、下发控制、观察 MQTT 实时回推。</p>
+      <ul>
+        <li><code>probe</code> 假凭证签名探活（无需账号）</li>
+        <li><code>devices</code> 列出全部设备与属性</li>
+        <li><code>watch</code> 实时监听状态变化</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- ==================== HA 集成 ==================== -->
+<section id="ha">
+  <div class="kicker">METHOD 01 · RECOMMENDED</div>
+  <h2 class="glow">Home Assistant 自定义集成</h2>
+  <p class="sec-lede">安装包 <code>bull_iot-ha-1.0.0.zip</code>（22KB），或直接从仓库复制 <code>homeassistant/custom_components/bull_iot/</code>。</p>
+
+  <div class="steps">
+    <div class="step reveal">
+      <div class="no"></div>
+      <div>
+        <h4>解压到 HA 配置目录</h4>
+        <p>在含 <code>configuration.yaml</code> 的目录下执行 <code>unzip bull_iot-ha-1.0.0.zip</code>，得到 <code>custom_components/bull_iot/</code>。</p>
+      </div>
+    </div>
+    <div class="step reveal">
+      <div class="no"></div>
+      <div>
+        <h4>重启 Home Assistant</h4>
+        <p>设置 → 系统 → 重启。首次加载时 HA 会自动安装依赖（requests / cryptography / paho-mqtt）。</p>
+      </div>
+    </div>
+    <div class="step reveal">
+      <div class="no"></div>
+      <div>
+        <h4>添加集成，输入账号密码</h4>
+        <p>设置 → 设备与服务 → 添加集成 → 搜索 <code>Bull IoT</code>。用户名为手机号；密码为 App 内设置的登录密码。</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="note"><b>注意：</b>只用手机验证码登录过 App 的账号，需先在 App 内（我的 → 设置 → 账号与安全）设置密码，本集成只支持账号密码登录。</div>
+
+  <h3 style="color:#fff; margin:34px 0 6px; font-size:19px;">你会得到什么</h3>
+  <table class="reveal">
+    <thead><tr><th>实体类型</th><th>示例</th><th>说明</th></tr></thead>
+    <tbody>
+      <tr><td>switch × N</td><td>switch.进门射灯</td><td>每路通道一个开关，名称取 App 昵称；单键设备暴露总开关</td></tr>
+      <tr><td>sensor</td><td>sensor.xxx_实时功率</td><td>实时功率 / 电压 / 电流 / 累计电量 / 电池电量（自动带单位与设备类别）</td></tr>
+      <tr><td>binary_sensor</td><td>binary_sensor.xxx_在线状态</td><td>云端 ONLINE / OFFLINE</td></tr>
+    </tbody>
+  </table>
+
+  <h3 style="color:#fff; margin:34px 0 6px; font-size:19px;">自动化示例</h3>
+  <p style="color:var(--muted); font-size:14.5px;">人体传感器联动射灯，人来灯开、3 分钟无人关：</p>
+  <div class="terminal reveal">
+    <div class="term-bar"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span><span class="term-title">automations.yaml</span><button class="copy-btn">复制</button></div>
+    <pre><span class="k">automation</span><span class="p">:</span>
+  <span class="p">-</span> <span class="k">alias</span><span class="p">:</span> <span class="s">"玄关人来灯亮"</span>
+    <span class="k">trigger</span><span class="p">:</span>
+      <span class="p">-</span> <span class="k">platform</span><span class="p">:</span> <span class="n">state</span>
+        <span class="k">entity_id</span><span class="p">:</span> <span class="n">binary_sensor.玄关_人体传感器_occupancy</span>
+        <span class="k">to</span><span class="p">:</span> <span class="s">"on"</span>
+    <span class="k">action</span><span class="p">:</span>
+      <span class="p">-</span> <span class="k">service</span><span class="p">:</span> <span class="n">switch.turn_on</span>
+        <span class="k">target</span><span class="p">:</span>
+          <span class="k">entity_id</span><span class="p">:</span> <span class="n">switch.进门射灯</span>
+
+  <span class="p">-</span> <span class="k">alias</span><span class="p">:</span> <span class="s">"玄关人走灯灭"</span>
+    <span class="k">trigger</span><span class="p">:</span>
+      <span class="p">-</span> <span class="k">platform</span><span class="p">:</span> <span class="n">state</span>
+        <span class="k">entity_id</span><span class="p">:</span> <span class="n">binary_sensor.玄关_人体传感器_occupancy</span>
+        <span class="k">to</span><span class="p">:</span> <span class="s">"off"</span>
+        <span class="k">for</span><span class="p">:</span> <span class="s">"00:03:00"</span>
+    <span class="k">action</span><span class="p">:</span>
+      <span class="p">-</span> <span class="k">service</span><span class="p">:</span> <span class="n">switch.turn_off</span>
+        <span class="k">target</span><span class="p">:</span>
+          <span class="k">entity_id</span><span class="p">:</span> <span class="n">switch.进门射灯</span></pre>
+  </div>
+
+  <table class="reveal">
+    <thead><tr><th>选项</th><th>默认</th><th>说明</th></tr></thead>
+    <tbody>
+      <tr><td>轮询间隔</td><td>60 秒</td><td>15–3600 秒可调；MQTT 在线时是兜底，可调大</td></tr>
+      <tr><td>MQTT 实时推送</td><td>开启</td><td>关闭后仅靠轮询，延迟最高等于轮询间隔</td></tr>
+      <tr><td>凭证失效</td><td>—</td><td>自动重登；彻底失效弹"重新验证"对话框，实体不用重建</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- ==================== Python 客户端 ==================== -->
+<section id="python">
+  <div class="kicker">METHOD 02 · DEVELOPER</div>
+  <h2 class="glow">Python 客户端</h2>
+  <p class="sec-lede">安装：<code>pip install requests cryptography paho-mqtt</code>，然后把 <code>bull_iot/</code> 目录拷进你的项目。</p>
+
+  <div class="terminal reveal">
+    <div class="term-bar"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span><span class="term-title">quickstart.py</span><button class="copy-btn">复制</button></div>
+    <pre><span class="k">from</span> <span class="n">bull_iot</span> <span class="k">import</span> <span class="n">BullCloudClient</span>
+
+<span class="k">with</span> <span class="f">BullCloudClient</span><span class="p">()</span> <span class="k">as</span> <span class="n">client</span><span class="p">:</span>
+    <span class="n">client</span><span class="p">.</span><span class="f">login</span><span class="p">(</span><span class="s">"你的账号"</span><span class="p">,</span> <span class="s">"你的密码"</span><span class="p">)</span>
+
+    <span class="n">devices</span> <span class="p">=</span> <span class="n">client</span><span class="p">.</span><span class="f">list_devices</span><span class="p">()</span>
+    <span class="k">for</span> <span class="n">d</span> <span class="k">in</span> <span class="n">devices</span><span class="p">:</span>
+        <span class="f">print</span><span class="p">(</span><span class="n">d</span><span class="p">.</span><span class="n">iot_id</span><span class="p">,</span> <span class="n">d</span><span class="p">.</span><span class="n">name</span><span class="p">,</span> <span class="n">d</span><span class="p">.</span><span class="n">room</span><span class="p">)</span>
+
+    <span class="c"># 打开 / 关闭设备第一路开关</span>
+    <span class="n">client</span><span class="p">.</span><span class="f">set_property</span><span class="p">(</span><span class="n">devices</span><span class="p">[</span><span class="n">0</span><span class="p">].</span><span class="n">iot_id</span><span class="p">,</span> <span class="s">"PowerSwitch"</span><span class="p">,</span> <span class="n">1</span><span class="p">)</span>
+    <span class="n">client</span><span class="p">.</span><span class="f">set_property</span><span class="p">(</span><span class="n">devices</span><span class="p">[</span><span class="n">0</span><span class="p">.</span><span class="n">iot_id</span><span class="p">,</span> <span class="s">"PowerSwitch"</span><span class="p">,</span> <span class="n">0</span><span class="p">)</span></pre>
+  </div>
+
+  <table class="reveal">
+    <thead><tr><th>核心 API</th><th>说明</th></tr></thead>
+    <tbody>
+      <tr><td>login(username, password)</td><td>账号密码登录，获取 access_token / refresh_token / openid</td></tr>
+      <tr><td>refresh_access_token()</td><td>刷新 token；失效时内部自动回退重新登录</td></tr>
+      <tr><td>list_devices(family_ids=None)</td><td>遍历所有家庭，返回 Device 列表（含属性快照、型号、固件）</td></tr>
+      <tr><td>refresh_devices(devices)</td><td>增量刷新进已有缓存，定时巡检用</td></tr>
+      <tr><td>get_families() / switch_family(id)</td><td>家庭列表 / 切换当前家庭</td></tr>
+      <tr><td>get_device_info(iot_id)</td><td>单设备详情（型号、固件版本）</td></tr>
+      <tr><td>set_property / set_properties</td><td>设置单个 / 批量属性</td></tr>
+      <tr><td>invoke_thing_service(iot_id, identifier)</td><td>调用设备服务（如充电桩 SheduleAuth 激活充电）</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- ==================== CLI ==================== -->
+<section id="cli">
+  <div class="kicker">METHOD 03 · CLI</div>
+  <h2 class="glow">命令行工具</h2>
+  <p class="sec-lede">凭证优先级：<code>--user/--password</code> 参数 &gt; 环境变量 <code>BULL_USERNAME</code> / <code>BULL_PASSWORD</code> &gt; 交互输入。</p>
+
+  <div class="terminal reveal">
+    <div class="term-bar"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span><span class="term-title">bash</span><button class="copy-btn">复制</button></div>
+    <pre><span class="c"># 不登录验证签名实现（假凭证探活，无需账号）</span>
+<span class="f">python</span> -m bull_iot.cli probe
+
+<span class="c"># 列出全部设备及属性</span>
+<span class="f">python</span> -m bull_iot.cli devices
+
+<span class="c"># 控制单个属性（关掉 G27 三位开关第 1 路）</span>
+<span class="f">python</span> -m bull_iot.cli set --iot-id <span class="p">&lt;</span>iotId<span class="p">&gt;</span> --identifier PowerSwitch_1 --value <span class="n">0</span>
+
+<span class="c"># MQTT 实时监听 60 秒（期间按物理开关，观察状态回推）</span>
+<span class="f">python</span> -m bull_iot.cli watch --seconds <span class="n">60</span></pre>
+  </div>
+</section>
+
+<!-- ==================== 协议 ==================== -->
+<section id="protocol">
+  <div class="kicker">PROTOCOL SUMMARY</div>
+  <h2 class="glow">协议要点速览</h2>
+  <p class="sec-lede">完整推导过程（含每一次踩坑与校准方法）见仓库中的 <code>PROTOCOL.md</code>。</p>
+  <div class="proto-grid">
+    <div class="proto reveal"><span class="idx">01</span><h4>x-ca-* HMAC-SHA256</h4><p>阿里云 API 网关风格签名。表单请求的签名 query 用<b style="color:var(--text)">表单字段本身</b>（网关从 body 重建），且不算 Content-MD5。</p></div>
+    <div class="proto reveal"><span class="idx">02</span><h4>登录加密</h4><p>用户名 AES-128-CBC（随机 IV 前缀 + 大写 Hex）；密码 <code>sha256(sha256(pwd)+sha256("GONGNIU"))</code> 双派生。</p></div>
+    <div class="proto reveal"><span class="idx">03</span><h4>登录请求</h4><p><code>x-www-form-urlencoded</code> 提交，必须携带头部 <code>Login_parameter: APP_PWD</code>（大小写敏感，放 body 或 query 均无效）。</p></div>
+    <div class="proto reveal"><span class="idx">04</span><h4>设备模型</h4><p><code>/mos/home/v3/rooms</code> 返回拍平列表；主条目（deviceEntity=true）带昵称，功能实体带通道名；属性拍平为 <code>父.子</code>。</p></div>
+    <div class="proto reveal"><span class="idx">05</span><h4>属性控制</h4><p><code>PUT /mos/v1/dc/setDeviceProperty/{iotId}</code>，body 为 <code>[{"identifier":..., "value":...}]</code>，实测云端接受且回读一致。</p></div>
+    <div class="proto reveal"><span class="idx">06</span><h4>MQTT 实时通道</h4><p><code>emqx-prod.iotbull.com:1883</code>，username=openid、password=access_token、clientId=<code>IOS@2.9.1@&lt;openid&gt;</code>；连接后发布绑定报文，接收 <code>thing.properties</code> / <code>thing.status</code>。</p></div>
+  </div>
+</section>
+
+<!-- ==================== FAQ ==================== -->
+<section id="faq">
+  <div class="kicker">TROUBLESHOOTING</div>
+  <h2 class="glow">常见问题</h2>
+
+  <details class="reveal">
+    <summary>只有验证码登录过 App，没有密码怎么办？</summary>
+    <div class="a">在 App 内 我的 → 设置 → 账号与安全 → 设置密码，然后用账号密码登录。本客户端只支持账号密码登录。</div>
+  </details>
+  <details class="reveal">
+    <summary>为什么开关名字是"进门射灯"这种？</summary>
+    <div class="a">直接取你在公牛智家 App 里给该通道设置的昵称。在 App 里改名后，HA 侧下次刷新自动同步。</div>
+  </details>
+  <details class="reveal">
+    <summary>设备出现了两次 / 控制的是旧状态？</summary>
+    <div class="a">云端设备会跨家庭共享（实测 1117 条记录 vs 448 台唯一设备），客户端已按 iotId 去重。若状态异常，检查集成选项里 MQTT 是否开启、轮询间隔是否过大。</div>
+  </details>
+  <details class="reveal">
+    <summary>家庭很多，有些设备看不到？</summary>
+    <div class="a">云端家庭列表接口硬上限 50 条，且忽略一切分页参数、无搜索端点，只能覆盖最近访问的 50 个家庭。这是云端限制，非本客户端问题。</div>
+  </details>
+  <details class="reveal">
+    <summary>提示需要重新验证（reauth）？</summary>
+    <div class="a">改了密码或 token 彻底失效。按 HA 弹窗输入新密码即可，<b style="color:var(--text)">不需要删除集成重加</b>，实体和自动化都不受影响。</div>
+  </details>
+  <details class="reveal">
+    <summary>支持充电桩 / 电量统计吗？</summary>
+    <div class="a">充电桩走 <code>invoke_thing_service</code>（如 <code>SheduleAuth</code> 激活充电）；带计量功能的设备会暴露实时功率 / 累计电量传感器。</div>
+  </details>
+</section>
+
+<!-- ==================== 安全 ==================== -->
+<section id="security">
+  <div class="kicker">SECURITY &amp; PRIVACY</div>
+  <h2 class="glow">安全与隐私</h2>
+  <div class="grid-2">
+    <div class="card reveal">
+      <span class="corner tr"></span><span class="corner bl"></span>
+      <h3>凭证去向</h3>
+      <ul>
+        <li>账号密码只存两处：你自己机器上的 <code>.env</code>（客户端，默认 gitignore），或 Home Assistant 的 <code>.storage</code>（集成，删除即清除）</li>
+        <li>仓库不包含、也不上传任何真实凭证，示例手机号均为虚构测试号</li>
+        <li>所有网络通信仅与公牛官方云端点发生</li>
+      </ul>
+    </div>
+    <div class="card reveal">
+      <span class="corner tr"></span><span class="corner bl"></span>
+      <h3>风险提醒</h3>
+      <ul>
+        <li>通过云端控制大功率设备（充电桩、加热器等）有安全风险</li>
+        <li>请谨慎配置"无人值守时自动开启大功率负载"的自动化</li>
+        <li>本项目仅用于个人设备接入与学习研究</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+</main>
+
+<footer>
+  <div class="wrap">
+    <div class="foot-grid">
+      <div>
+        <div style="font-family:var(--mono); color:var(--cyan); font-size:15px; letter-spacing:.1em;">BULL IOT REVERSE</div>
+        <p class="disclaimer">本项目仅用于个人设备接入与学习研究。通过云端接口控制大功率设备存在安全风险，请谨慎设置自动化。使用本代码产生的一切后果由使用者自行承担。</p>
+      </div>
+      <div class="foot-links">
+        <a href="PROTOCOL.md">PROTOCOL.md ↗</a>
+        <a href="GUIDE.md">GUIDE.md ↗</a>
+        <a href="homeassistant/INSTALL_HA.md">INSTALL_HA.md ↗</a>
+        <a href="https://github.com/">GitHub ↗</a>
+      </div>
+    </div>
+    <p class="disclaimer" style="margin-top:26px; font-family:var(--mono); font-size:11.5px;">© 2026 bull-iot-reverse contributors · MIT License · protocol reverse-engineered from api.iotbull.com</p>
+  </div>
+</footer>
+
+<script>
+  // ---- 打字机 ----
+  const lines = [
+    "> 初始化协议逆向引擎 ... OK",
+    "> x-ca-* HMAC-SHA256 签名校准完成",
+    "> 登录链路 AES + 双SHA256 复现完成",
+    "> 448 台设备 · MQTT 实时通道在线",
+    "> Home Assistant 集成就绪 _"
+  ];
+  const el = document.getElementById("typed");
+  let li = 0, ci = 0;
+  function type() {
+    if (li >= lines.length) return;
+    const line = lines[li];
+    if (ci < line.length) {
+      el.textContent = lines.slice(0, li).join("\n") + (li > 0 ? "\n" : "") + line.slice(0, ++ci);
+      setTimeout(type, line[ci - 1] === " " ? 24 : 42);
+    } else {
+      li++; ci = 0;
+      setTimeout(type, 420);
+    }
+  }
+  type();
+
+  // ---- 滚动进度条 ----
+  const bar = document.getElementById("progress");
+  addEventListener("scroll", () => {
+    const h = document.documentElement;
+    bar.style.width = (h.scrollTop / (h.scrollHeight - h.clientHeight) * 100) + "%";
+  }, { passive: true });
+
+  // ---- 入场动画 ----
+  const io = new IntersectionObserver(entries => {
+    entries.forEach(e => { if (e.isIntersecting) { e.target.classList.add("in"); io.unobserve(e.target); } });
+  }, { threshold: 0.12 });
+  document.querySelectorAll(".reveal").forEach(el => io.observe(el));
+
+  // ---- 导航 scrollspy ----
+  const links = [...document.querySelectorAll("nav a")];
+  const secs = links.map(a => document.querySelector(a.getAttribute("href")));
+  addEventListener("scroll", () => {
+    let idx = 0;
+    secs.forEach((s, i) => { if (s && s.getBoundingClientRect().top < 140) idx = i; });
+    links.forEach((a, i) => a.classList.toggle("active", i === idx));
+  }, { passive: true });
+
+  // ---- 复制按钮 ----
+  document.querySelectorAll(".copy-btn").forEach(btn => {
+    btn.addEventListener("click", async () => {
+      const code = btn.closest(".terminal").querySelector("pre").innerText;
+      try { await navigator.clipboard.writeText(code); btn.textContent = "已复制 ✓"; }
+      catch { btn.textContent = "复制失败"; }
+      setTimeout(() => btn.textContent = "复制", 1600);
+    });
+  });
+</script>
+</body>
+</html>
