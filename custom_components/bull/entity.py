@@ -5,7 +5,7 @@ from __future__ import annotations
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .const import BLE_CHARGER_PRODUCT_IDS, MANUFACTURER
+from .const import BLE_CHARGER_PRODUCT_IDS, DOMAIN, MANUFACTURER
 from .coordinator import BullCoordinator
 
 
@@ -24,7 +24,9 @@ class BullDeviceEntity(CoordinatorEntity[BullCoordinator]):
         self._iot_id = iot_id
         self._identifier = identifier
         self._name = name
-        self._attr_unique_id = f"{iot_id}_{entity_kind}_{identifier}"
+        # Keep the established Bull integration identity so HACS upgrades do
+        # not duplicate entities or break automations and external allowlists.
+        self._attr_unique_id = f"{iot_id}.{identifier}"
         self._attr_has_entity_name = True
 
     @property
@@ -57,7 +59,7 @@ class BullDeviceEntity(CoordinatorEntity[BullCoordinator]):
     def device_info(self) -> DeviceInfo:
         device = self._device
         return DeviceInfo(
-            identifiers={("bull_iot", self._iot_id)},
+            identifiers={(DOMAIN, self._iot_id)},
             name=(device.name or device.product_name) if device else self._iot_id,
             manufacturer=MANUFACTURER,
             model=(device.model_name or device.product_name) if device else None,

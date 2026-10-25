@@ -10,7 +10,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .const import BLE_CHARGER_PRODUCT_IDS, CHARGER_PRODUCT_IDS
+from .const import BLE_CHARGER_PRODUCT_IDS, CHARGER_PRODUCT_IDS, DOMAIN
 from .coordinator import BullCoordinator
 from .device_profiles import SupportTier, infer_switch_tier
 from .digital_display_socket import (
@@ -46,7 +46,7 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up Bull switches from a config entry."""
-    coordinator: BullCoordinator = hass.data["bull_iot"][entry.entry_id]
+    coordinator: BullCoordinator = hass.data[DOMAIN][entry.entry_id]
     entities: list[BullSwitchEntity] = []
 
     for device in coordinator.data.values():

@@ -7,6 +7,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
+from .const import DOMAIN
 from .coordinator import BullCoordinator
 from .digital_display_socket import (
     DIGITAL_DISPLAY_SOCKET_PRODUCT_IDS,
@@ -57,7 +58,7 @@ class BullScreenBrightness(BullDeviceEntity, NumberEntity):
 async def async_setup_entry(
     hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback
 ) -> None:
-    coordinator: BullCoordinator = hass.data["bull_iot"][entry.entry_id]
+    coordinator: BullCoordinator = hass.data[DOMAIN][entry.entry_id]
     async_add_entities(
         [
             BullScreenBrightness(coordinator, device.iot_id)

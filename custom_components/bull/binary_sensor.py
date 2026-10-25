@@ -10,6 +10,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
+from .const import DOMAIN
 from .coordinator import BullCoordinator
 from .entity import BullDeviceEntity
 
@@ -42,7 +43,7 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up Bull connectivity sensors from a config entry."""
-    coordinator: BullCoordinator = hass.data["bull_iot"][entry.entry_id]
+    coordinator: BullCoordinator = hass.data[DOMAIN][entry.entry_id]
     entities: list[BinarySensorEntity] = [
         BullConnectivityEntity(coordinator, device.iot_id)
         for device in coordinator.data.values()
@@ -68,7 +69,9 @@ class BullConnectivityEntity(BullDeviceEntity, BinarySensorEntity):
     """Whether the device is online (cloud status)."""
 
     def __init__(self, coordinator: BullCoordinator, iot_id: str) -> None:
-        super().__init__(coordinator, iot_id, "status", "在线状态", "binary_sensor")
+        super().__init__(
+            coordinator, iot_id, "connectivity", "在线状态", "binary_sensor"
+        )
         self._attr_device_class = BinarySensorDeviceClass.CONNECTIVITY
 
     @property

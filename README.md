@@ -90,7 +90,7 @@ bull_iot/
   cli.py           # 命令行入口
 tests/             # 签名验证测试（假凭证探活，无需账号）
 examples/          # 示例脚本
-custom_components/bull_iot/     # HACS/HA 自定义集成
+custom_components/bull/     # HACS/HA 自定义集成
   device_profiles.json          # 版本化设备能力与实测证据登记
 homeassistant/
   INSTALL_HA.md                 # 安装说明
@@ -101,7 +101,9 @@ PROVENANCE.md      # 来源、验证和许可证边界
 
 ## Home Assistant 集成
 
-仓库根目录的 `custom_components/bull_iot/` 是标准 HACS 自定义集成。
+仓库根目录的 `custom_components/bull/` 是标准 HACS 自定义集成。
+它沿用既有 `bull` 域名、配置字段兼容层及实体唯一 ID，可从现有 Bull IoT
+安装原位升级，保留实体 ID、自动化和外部白名单。
 
 ### HACS 安装
 
@@ -112,7 +114,7 @@ PROVENANCE.md      # 来源、验证和许可证边界
 也可以手动复制：
 
 ```bash
-cp -R custom_components/bull_iot /path/to/ha/config/custom_components/
+cp -R custom_components/bull /path/to/ha/config/custom_components/
 ```
 
 详见 [homeassistant/INSTALL_HA.md](homeassistant/INSTALL_HA.md)。

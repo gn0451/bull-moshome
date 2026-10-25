@@ -9,6 +9,7 @@
 - Reject reauthentication with a different MosHome account.
 - Allow selected families to be changed from integration options.
 - Adopt the standard HACS repository layout, translations, brand assets and validation workflow.
+- Preserve the established `bull` domain, legacy family selection and entity unique IDs for in-place upgrades.
 - Add compatibility for config-entry-aware coordinators in current Home Assistant releases.
 - Clarify the 5.1.13 protocol-source and 5.3.1 compatibility-test boundary.
 

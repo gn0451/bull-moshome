@@ -1,6 +1,6 @@
 # 设备兼容性与贡献流程
 
-设备能力登记位于 `custom_components/bull_iot/device_profiles.json`。支持等级含义：
+设备能力登记位于 `custom_components/bull/device_profiles.json`。支持等级含义：
 
 - `profiled`：已有明确产品档案，默认启用；不等同于每个固件都完成现场控制验收。
 - `verified`：该 PID 已完成控制和状态回读验收。

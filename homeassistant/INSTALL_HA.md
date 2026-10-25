@@ -25,7 +25,8 @@
   的实验实体。PID 3、20、21、69 及未知电池面板保持只读。
 - **诊断导出**：HA 的“下载诊断”只输出 PID、型号、固件、属性名称和支持等级，
   不输出账号、设备 ID、昵称、房间或属性值。
-- **并行验收**：首次安装默认关闭 MQTT，避免与现有 `bull` 集成使用相同账号时发生客户端连接冲突。候选版通过验收并准备替换旧版后，再在选项中启用。
+- **原位升级**：沿用现有 `bull` 集成域名、配置条目、设备标识和实体唯一 ID，
+  现有实体 ID、自动化及 OpenClaw 白名单无需重建。
 
 ## 二、安装
 
@@ -37,10 +38,10 @@
 
 ### 手动安装
 
-把仓库中的 `custom_components/bull_iot` 复制到 HA 配置目录：
+把仓库中的 `custom_components/bull` 复制到 HA 配置目录：
 
    ```bash
-   cp -R custom_components/bull_iot /path/to/ha/config/custom_components/
+   cp -R custom_components/bull /path/to/ha/config/custom_components/
    ```
 
 1. **重启 Home Assistant**（设置 → 系统 → 重启）。
@@ -69,7 +70,7 @@
 |------|------|------|
 | 接入家庭 | 安装时选择 | 可随时调整，无需删除集成 |
 | 轮询间隔 | 300 秒 | 范围 15–3600；MQTT 为主要更新通道，轮询只做状态校准 |
-| MQTT 实时推送 | 关 | 与旧集成并行时保持关闭；正式切换后启用 |
+| MQTT 实时推送 | 开 | 秒级状态回推；关闭后仅使用轮询 |
 
 ## 四、已知限制（来自云端实测）
 
@@ -84,18 +85,19 @@
 设置 → 设备与服务 → Bull IoT 条目 → 删除。会同时移除全部实体与保存的凭证
 （密码仅存于 HA 的 `.storage` 配置条目，删除即清除）。
 
-## 六、并行迁移与验收
+## 六、从现有 Bull IoT 原位升级
 
-`bull_iot` 使用单独的集成域名，适合先在不改动既有实体和自动化的情况下并行验收。
-如同一账号已有其他云连接，首次安装应保持 MQTT 关闭，避免重复客户端连接。
+本集成沿用 `bull` 域名，并兼容旧配置条目的 `selected_families` 字段以及
+`<iotId>.<identifier>` 实体唯一 ID。通过 HACS 覆盖升级后，原有配置、实体 ID、
+自动化、HA-Fusion 页面和 OpenClaw 白名单应保持不变。
 
-正式切换前应核对新实体 ID，并重新映射 OpenClaw 白名单、HA-Fusion 页面和
-自动化；未完成真实设备验收前不要停用既有控制链路。
+升级前仍应备份 `config/custom_components/bull` 和 HA `.storage`。升级后先核对实体
+数量与可用性，再做一组低风险开关的开、关、状态回读测试；未通过前使用备份回滚。
 
 ## 七、文件结构
 
 ```
-custom_components/bull_iot/
+custom_components/bull/
 ├── __init__.py          # 集成入口：setup/unload/重载
 ├── config_flow.py       # UI 配置流 + 重新验证(reauth)
 ├── coordinator.py       # DataUpdateCoordinator：轮询/登录/MQTT 调度
@@ -128,12 +130,12 @@ custom_components/bull_iot/
 
 ```bash
 # 确认组件目录就位
-ls config/custom_components/bull_iot/manifest.json
+ls config/custom_components/bull/manifest.json
 
 # 确认依赖已装（HA venv 内）
 source bin/activate 2>/dev/null || true
 python -c "import requests, cryptography, paho.mqtt.client; print('deps ok')"
 
 # 看集成日志
-# 设置 → 系统 → 日志，过滤 bull_iot
+# 设置 → 系统 → 日志，过滤 bull
 ```

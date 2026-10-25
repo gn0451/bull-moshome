@@ -40,7 +40,7 @@ WiFi 转换器、无线开关/传感器（电池供电）、灯、窗帘和充�
 自定义存储库，然后下载 **Bull MosHome**。也可以手动复制：
 
 ```bash
-cp -r custom_components/bull_iot <HA配置目录>/custom_components/
+cp -r custom_components/bull <HA配置目录>/custom_components/
 ```
 
 然后 **重启 Home Assistant**（设置 → 系统 → 重启）。

@@ -2,12 +2,13 @@
 
 from .device_profiles import COMPATIBILITY_PROFILES, READ_ONLY_PROFILES
 
-DOMAIN = "bull_iot"
+DOMAIN = "bull"
 
 # 配置流程字段
 CONF_USERNAME = "username"
 CONF_PASSWORD = "password"
 CONF_FAMILY_IDS = "family_ids"
+LEGACY_CONF_FAMILY_IDS = "selected_families"
 
 # 选项
 CONF_SCAN_INTERVAL = "scan_interval"
@@ -15,7 +16,7 @@ CONF_MQTT_ENABLED = "mqtt_enabled"
 
 # MQTT is the primary update path. Polling is only a reconciliation fallback.
 DEFAULT_SCAN_INTERVAL = 300  # 秒
-DEFAULT_MQTT_ENABLED = False
+DEFAULT_MQTT_ENABLED = True
 
 PLATFORMS = [
     "switch",

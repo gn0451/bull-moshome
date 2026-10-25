@@ -32,6 +32,7 @@ from .const import (
     DEFAULT_MQTT_ENABLED,
     DEFAULT_SCAN_INTERVAL,
     DOMAIN,
+    LEGACY_CONF_FAMILY_IDS,
     THING_SERVICE_CHARGER_PRODUCT_IDS,
 )
 from .mqtt_listener import BullMqttListener
@@ -72,9 +73,11 @@ class BullCoordinator(DataUpdateCoordinator[dict[str, Device]]):
         Entries created before family selection was introduced retain the old
         all-family behavior until the integration is reconfigured.
         """
-        family_ids = self.entry.options.get(
-            CONF_FAMILY_IDS, self.entry.data.get(CONF_FAMILY_IDS)
-        )
+        family_ids = self.entry.options.get(CONF_FAMILY_IDS)
+        if family_ids is None:
+            family_ids = self.entry.data.get(
+                CONF_FAMILY_IDS, self.entry.data.get(LEGACY_CONF_FAMILY_IDS)
+            )
         if family_ids is None:
             return None
         return [int(family_id) for family_id in family_ids]

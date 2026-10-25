@@ -1,4 +1,4 @@
-"""bull_iot HA 集成端到端 mock 测试。
+"""bull HA 集成端到端 mock 测试。
 
 不访问真实网络：mock BullCloudClient 的全部出网方法，验证
 config flow（user/reauth/reauth_confirm）、coordinator（首刷/周期刷新/
@@ -14,24 +14,28 @@ from unittest.mock import AsyncMock, MagicMock, patch
 # 组件目录 = <repo>/custom_components（相对本测试文件定位）
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "custom_components"))
 
-import bull_iot.binary_sensor as bs_mod
-import bull_iot.ble as ble_mod
-import bull_iot.ble_charger as ble_charger_mod
-import bull_iot.button as button_mod
-import bull_iot.config_flow as cf_mod
-import bull_iot.coordinator as coord_mod
-import bull_iot.cover as cover_mod
-import bull_iot.diagnostics as diagnostics_mod
-import bull_iot.light as light_mod
-import bull_iot.number as number_mod
-import bull_iot.select as select_mod
-import bull_iot.sensor as sensor_mod
-import bull_iot.switch as switch_mod
-from bull_iot.const import CONF_FAMILY_IDS, CONF_MQTT_ENABLED, DOMAIN
+import bull.binary_sensor as bs_mod
+import bull.ble as ble_mod
+import bull.ble_charger as ble_charger_mod
+import bull.button as button_mod
+import bull.config_flow as cf_mod
+import bull.coordinator as coord_mod
+import bull.cover as cover_mod
+import bull.diagnostics as diagnostics_mod
+import bull.light as light_mod
+import bull.number as number_mod
+import bull.select as select_mod
+import bull.sensor as sensor_mod
+import bull.switch as switch_mod
+from bull.client import AuthenticationError, BullCloudError, Device
+from bull.const import (
+    CONF_FAMILY_IDS,
+    CONF_MQTT_ENABLED,
+    DOMAIN,
+    LEGACY_CONF_FAMILY_IDS,
+)
 from homeassistant.exceptions import ConfigEntryAuthFailed
 from homeassistant.helpers.update_coordinator import UpdateFailed
-
-from bull_iot.client import AuthenticationError, BullCloudError, Device
 
 PASSED = []
 FAILED = []
@@ -393,7 +397,7 @@ async def test_switch_platform():
     ent = next(e for e in added if e._identifier == "PowerSwitch_1")
     assert ent.name == "进门射灯", ent.name
     assert ent.is_on is True
-    assert ent.unique_id == f"{device.iot_id}_switch_PowerSwitch_1"
+    assert ent.unique_id == f"{device.iot_id}.PowerSwitch_1"
     info = ent.device_info
     assert info["identifiers"] == {(DOMAIN, device.iot_id)}
     assert info["manufacturer"] == "公牛 (BULL)"
@@ -744,6 +748,7 @@ async def test_binary_sensor_platform():
     added = []
     await bs_mod.async_setup_entry(hass, entry, lambda ents: added.extend(ents))
     assert len(added) == 1
+    assert added[0].unique_id == f"{device.iot_id}.connectivity"
     assert added[0].is_on is True
     device.status = "OFFLINE"
     assert added[0].is_on is False
@@ -799,6 +804,21 @@ async def test_coordinator_options_override_family_scope():
     with patch.object(coord_mod, "BullCloudClient", return_value=make_fake_client()):
         coordinator = coord_mod.BullCoordinator(FakeHass(), entry)
     assert coordinator.family_ids == [2002]
+
+
+async def test_coordinator_accepts_legacy_family_scope():
+    """Entries created by the established bull integration upgrade in place."""
+    entry = FakeEntry(
+        data={
+            "username": "13800138000",
+            "password": "secret",
+            LEGACY_CONF_FAMILY_IDS: [3003],
+        }
+    )
+    with patch.object(coord_mod, "BullCloudClient", return_value=make_fake_client()):
+        coordinator = coord_mod.BullCoordinator(FakeHass(), entry)
+    assert DOMAIN == "bull"
+    assert coordinator.family_ids == [3003]
 
 
 async def test_anonymized_diagnostics():
@@ -860,6 +880,7 @@ async def main():
         ("options 流", test_options_flow),
         ("options 加载家庭", test_options_flow_loads_current_families),
         ("options 家庭范围生效", test_coordinator_options_override_family_scope),
+        ("legacy bull 配置原位升级", test_coordinator_accepts_legacy_family_scope),
         ("匿名诊断", test_anonymized_diagnostics),
     ]
     print("=" * 60)

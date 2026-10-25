@@ -19,6 +19,7 @@ from .const import (
     DEFAULT_MQTT_ENABLED,
     DEFAULT_SCAN_INTERVAL,
     DOMAIN,
+    LEGACY_CONF_FAMILY_IDS,
 )
 
 
@@ -218,7 +219,11 @@ class BullOptionsFlow(OptionsFlow):
             for family in self._families
         }
         current_family_ids = self.config_entry.options.get(
-            CONF_FAMILY_IDS, self.config_entry.data.get(CONF_FAMILY_IDS, [])
+            CONF_FAMILY_IDS,
+            self.config_entry.data.get(
+                CONF_FAMILY_IDS,
+                self.config_entry.data.get(LEGACY_CONF_FAMILY_IDS, []),
+            ),
         )
         if not family_options:
             family_options = {
