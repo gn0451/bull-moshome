@@ -35,12 +35,12 @@ class BullDeviceEntity(CoordinatorEntity[BullCoordinator]):
 
     @property
     def name(self) -> str:
+        # ``has_entity_name`` makes Home Assistant prefix the device name, so
+        # this property must only return the entity-specific part. Returning
+        # the device name here would render it twice ("Kitchen Kitchen Switch").
         if self._name:
             return self._name
-        device = self._device
-        if device is None:
-            return self._identifier
-        return f"{device.name or device.product_name} {self._identifier}"
+        return self._identifier
 
     @property
     def available(self) -> bool:

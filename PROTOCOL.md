@@ -2,7 +2,7 @@
 
 > 核心常量与请求格式最初依据 MosHome 5.1.13 分析整理，并通过线上网关校准；
 > 2026-10-25 又使用 MosHome 5.3.1、线上 API 和真实设备完成兼容验收。
-> 配套实现位于 `bull_iot/` 与 `custom_components/bull_iot/`，证据边界见
+> 配套实现位于 `bull_iot/` 与 `custom_components/bull/`，证据边界见
 > `PROVENANCE.md`。
 
 ---

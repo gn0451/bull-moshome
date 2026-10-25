@@ -112,11 +112,17 @@ class BullMqttListener:
             return
 
         if msg.topic.endswith("/account/bind_reply"):
-            _LOGGER.debug(
-                "MQTT 账号绑定应答: code=%s message=%s",
-                db.get("code"),
-                db.get("message"),
-            )
+            code = db.get("code")
+            if str(code) != "200":
+                # A failed bind means no push updates at all; without this the
+                # integration would silently fall back to polling forever.
+                _LOGGER.warning(
+                    "MQTT 账号绑定失败: code=%s message=%s（实时推送不可用，将依赖轮询）",
+                    code,
+                    db.get("message"),
+                )
+                return
+            _LOGGER.debug("MQTT 账号绑定成功: code=%s", code)
             self.bound.set()
             return
 

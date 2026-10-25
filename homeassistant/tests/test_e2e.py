@@ -436,7 +436,7 @@ async def test_switch_unknown_capability_is_discovered_disabled():
     await switch_mod.async_setup_entry(hass, entry, lambda values: added.extend(values))
     assert len(added) == 1
     assert added[0].entity_registry_enabled_default is False
-    assert added[0].extra_state_attributes["support_tier"] == "inferred-safe"
+    assert added[0]._support_tier is switch_mod.SupportTier.INFERRED_SAFE
 
 
 async def test_switch_unknown_battery_panel_stays_read_only():

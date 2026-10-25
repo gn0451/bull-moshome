@@ -1,0 +1,52 @@
+name: 新设备支持
+description: 你的公牛设备在 HA 里没有出现，或出现了但功能不对
+labels: ["device-support"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        请先在 HA 的 Bull MosHome 集成条目里点 **下载诊断**，它只包含协议标识符与支持等级，
+        不含账号、家庭 ID、设备 ID、昵称、房间和属性值 —— 可以直接贴出来。
+
+        判断依据见 [COMPATIBILITY.md](https://github.com/gn0451/bull-moshome/blob/main/COMPATIBILITY.md)：
+        **真机控制回读 > 账号清单观察 > 协议推测**，证据等级决定设备能否从「默认禁用」升级为「默认启用」。
+  - type: input
+    id: product-name
+    attributes:
+      label: 设备名称（App 里显示的型号）
+      placeholder: "例如 G55智能开关(二位零火)"
+    validations:
+      required: true
+  - type: input
+    id: product-id
+    attributes:
+      label: product_id
+      description: 诊断报告里的 `product_id` 字段
+      placeholder: "例如 34"
+    validations:
+      required: true
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: 诊断片段
+      description: 贴该设备的 `property_identifiers` 与 `support_tier`
+      render: json
+    validations:
+      required: true
+  - type: dropdown
+    id: evidence
+    attributes:
+      label: 你能提供哪一级证据
+      options:
+        - 真机控制 + 状态回读（可提升为 verified）
+        - 仅账号清单里能看到该设备
+        - 只有协议推测，没有设备
+    validations:
+      required: true
+  - type: textarea
+    id: expectation
+    attributes:
+      label: 期望的能力
+      description: 例如「三路独立开关」「亮度 + 色温」「开合百分比」
+    validations:
+      required: true

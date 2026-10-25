@@ -59,6 +59,7 @@ class Device:
     firmware_version: str = ""
     properties: dict = field(default_factory=dict)  # 扁平化后的 identifier -> value
     raw: dict = field(default_factory=dict)
+    detail: dict = field(default_factory=dict)
 
     def describe(self) -> str:
         lines = [
@@ -266,6 +267,9 @@ class BullCloudClient:
                 seen_iot_ids.add(info["iotId"])
                 self._parse_device(devices, info)
 
+        # Only prune after every selected family completed successfully. This
+        # removes devices deleted from MosHome without turning a partial cloud
+        # failure into accidental cache loss.
         for iot_id in set(devices) - seen_iot_ids:
             devices.pop(iot_id, None)
         return devices
@@ -283,6 +287,7 @@ class BullCloudClient:
                 flatten_properties(device.properties, prop["identifier"], prop["value"])
             try:
                 detail = self.get_device_info(iot_id)
+                device.detail = detail
                 device.product_name = detail.get("productName", "")
                 device.model_name = detail.get("modelName", "")
                 device.firmware_version = detail.get("firmwareVersion", "")
@@ -338,6 +343,48 @@ class BullCloudClient:
             content_type="application/json",
             body=json.dumps({"identifier": identifier}, separators=(",", ":")),
         )
+
+    def confirm_ble_random(self, pid: int, device_name: str) -> str:
+        """Get the cloud challenge used to authenticate a local BLE session."""
+        body = json.dumps({"pid": str(pid), "dn": device_name}, separators=(",", ":"))
+        res = self._request_with_auth_recovery(
+            "POST", "/mos/ble/v1/confirmRandom", body=body
+        )
+        result = res.get("result")
+        value = result.get("random") if isinstance(result, dict) else result
+        if not isinstance(value, str) or len(value.encode()) != 16:
+            raise BullCloudError(
+                "BLE confirmRandom", message="云端未返回 16 字节随机数"
+            )
+        return value
+
+    def confirm_ble_device(
+        self, random_value: str, pid: int, device_name: str, cipher: bytes
+    ) -> str:
+        """Exchange the device proof for a local BLE session key."""
+        body = json.dumps(
+            {
+                "random": random_value,
+                "pid": str(pid),
+                "dn": device_name,
+                "cipher": cipher.hex().upper(),
+            },
+            separators=(",", ":"),
+        )
+        res = self._request_with_auth_recovery(
+            "POST", "/mos/ble/v1/confirmDevice", body=body
+        )
+        result = res.get("result")
+        key = result.get("bleKey") if isinstance(result, dict) else result
+        if not isinstance(key, str) or len(key) != 32:
+            raise BullCloudError("BLE confirmDevice", message="云端未返回 16 字节密钥")
+        try:
+            bytes.fromhex(key)
+        except ValueError as err:
+            raise BullCloudError(
+                "BLE confirmDevice", message="云端密钥格式错误"
+            ) from err
+        return key
 
     def close(self) -> None:
         self.session.close()

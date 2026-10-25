@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 使用问题 / 自动化示例
+    url: https://github.com/gn0451/bull-moshome/blob/main/GUIDE.md
+    about: 安装步骤、自动化示例和常见问题先看 GUIDE.md
+  - name: 协议细节
+    url: https://github.com/gn0451/bull-moshome/blob/main/PROTOCOL.md
+    about: 签名算法、端点和实测校准过程见 PROTOCOL.md

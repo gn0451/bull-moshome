@@ -18,14 +18,6 @@
           "mqtt_enabled": "启用 MQTT 实时推送（与旧集成并行测试时请关闭）"
         }
       },
-      "reauth": {
-        "title": "重新验证公牛智家账号",
-        "description": "凭证已失效，请重新输入账号密码",
-        "data": {
-          "username": "账号",
-          "password": "密码"
-        }
-      },
       "reauth_confirm": {
         "title": "重新验证公牛智家账号",
         "description": "凭证已失效，请重新输入账号密码（当前账号：{username}）",

@@ -49,6 +49,11 @@ FIELD_EVIDENCE: dict[int, dict[str, str]] = {
     int(product_id): evidence
     for product_id, evidence in PROFILE_REGISTRY["field_evidence"].items()
 }
+# Chargers that must be driven through the Thing Service API instead of the
+# plain property endpoint. Kept in the registry so device lists have one source.
+THING_SERVICE_CHARGER_PRODUCT_IDS: frozenset[int] = frozenset(
+    PROFILE_REGISTRY.get("thing_service_chargers", ())
+)
 
 
 def resolve_profile(product_id: int) -> DeviceProfile | None:

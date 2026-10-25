@@ -9,12 +9,13 @@
 
 from __future__ import annotations
 
+import inspect
 import logging
 from datetime import timedelta
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
-from homeassistant.exceptions import ConfigEntryAuthFailed
+from homeassistant.exceptions import ConfigEntryAuthFailed, HomeAssistantError
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from .client import (
@@ -50,13 +51,14 @@ class BullCoordinator(DataUpdateCoordinator[dict[str, Device]]):
             "name": DOMAIN,
             "update_interval": timedelta(seconds=max(15, interval)),
         }
-        try:
+        # ``config_entry`` was added to DataUpdateCoordinator in a later core
+        # release. Detect support by signature instead of catching TypeError,
+        # which would also swallow genuine type errors from the constructor.
+        if "config_entry" in inspect.signature(
+            DataUpdateCoordinator.__init__
+        ).parameters:
             super().__init__(hass, _LOGGER, config_entry=entry, **coordinator_kwargs)
-        except TypeError as err:
-            # HA versions before config-entry-aware coordinators do not accept
-            # this keyword. Keep the integration loadable during migration.
-            if "config_entry" not in str(err):
-                raise
+        else:
             super().__init__(hass, _LOGGER, **coordinator_kwargs)
         self.entry = entry
         self.client = BullCloudClient()
@@ -256,13 +258,22 @@ class BullCoordinator(DataUpdateCoordinator[dict[str, Device]]):
         await self.async_set_properties(iot_id, {identifier: value})
 
     async def async_set_properties(self, iot_id: str, properties: dict) -> None:
-        """Set one or more properties in a single cloud request."""
+        """Set one or more properties in a single cloud request.
+
+        Cloud failures surface as HomeAssistantError so the UI shows the reason
+        instead of a generic "unknown error". Entities write an optimistic state
+        immediately; when MQTT push is off the authoritative state arrives with
+        the next scheduled poll (or on an explicit ``homeassistant.update_entity``
+        call, which triggers a coordinator refresh).
+        """
 
         def _sync_set() -> None:
             try:
                 self.client.set_properties(iot_id, properties)
             except AuthenticationError as err:
                 raise ConfigEntryAuthFailed(str(err)) from err
+            except BullCloudError as err:
+                raise HomeAssistantError(f"下发指令失败：{err.message or err}") from err
 
         await self.hass.async_add_executor_job(_sync_set)
 

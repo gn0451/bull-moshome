@@ -135,15 +135,6 @@ class BullSwitchEntity(BullDeviceEntity, SwitchEntity):
         )
 
     @property
-    def extra_state_attributes(self) -> dict[str, str | int]:
-        """Expose why this entity exists without leaking device identifiers."""
-        device = self._device
-        return {
-            "support_tier": self._support_tier.value,
-            "product_id": device.product_id if device else -1,
-        }
-
-    @property
     def is_on(self) -> bool:
         device = self._device
         if device is None:

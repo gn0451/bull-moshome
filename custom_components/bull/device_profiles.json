@@ -7,6 +7,7 @@
     "cloud_charger": [74, 75, 141, 193, 195, 196, 199, 258, 274, 275],
     "ble_charger": [309]
   },
+  "thing_service_chargers": [193, 195],
   "read_only_profiles": {
     "3": {
       "category": "gateway_socket",
