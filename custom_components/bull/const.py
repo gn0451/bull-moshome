@@ -35,6 +35,18 @@ PLATFORMS = [
 
 MANUFACTURER = "公牛 (BULL)"
 
+
+def mask_account(username: str) -> str:
+    """Mask a phone-like account name before showing it in the UI.
+
+    MosHome accounts are phone numbers, and the config entry title is visible in
+    Settings → Devices & services, in screenshots and in issue reports.
+    """
+    digits = username.strip()
+    if len(digits) >= 8 and digits.isdigit():
+        return f"{digits[:3]}****{digits[-4:]}"
+    return username
+
 # Control entities are deliberately opt-in by product. A property named
 # PowerSwitch is not sufficient evidence that the product is a load switch:
 # wireless scene panels expose similar properties but should be treated as

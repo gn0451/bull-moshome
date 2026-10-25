@@ -6,7 +6,8 @@
   integration icon locally (HA 2024.5+). This also satisfies the HACS `check brands` step.
 - Mask the account in the config entry title (`138****0398` instead of the full phone number).
   The title is visible in Settings → Devices & services and in every screenshot or issue
-  report; existing entries keep their current title until they are re-added.
+  report. Existing entries are migrated in place (config entry version 1 → 2), so no re-adding
+  is needed.
 - Add a device list screenshot to the README.
 
 ## 1.3.2

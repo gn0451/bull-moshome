@@ -839,6 +839,21 @@ async def test_anonymized_diagnostics():
     assert report["devices"][0]["support_tier"] == "profiled"
 
 
+async def test_migrate_entry_masks_account_title():
+    """v1 -> v2：把旧条目名里的手机号脱敏，避免出现在设置页和截图里。"""
+    import bull as bull_pkg
+
+    hass = FakeHass()
+    entry = FakeEntry()
+    entry.version = 1
+    entry.title = "13819880398"
+
+    assert await bull_pkg.async_migrate_entry(hass, entry) is True
+    kwargs = hass.config_entries.async_update_entry.call_args.kwargs
+    assert kwargs["title"] == "138****0398", kwargs
+    assert kwargs["version"] == 2, kwargs
+
+
 async def main():
     tests = [
         ("config_flow: user 成功", test_config_flow_user_success),
@@ -883,6 +898,7 @@ async def main():
         ("options 加载家庭", test_options_flow_loads_current_families),
         ("options 家庭范围生效", test_coordinator_options_override_family_scope),
         ("legacy bull 配置原位升级", test_coordinator_accepts_legacy_family_scope),
+        ("条目名脱敏迁移", test_migrate_entry_masks_account_title),
         ("匿名诊断", test_anonymized_diagnostics),
     ]
     print("=" * 60)

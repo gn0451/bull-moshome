@@ -20,24 +20,12 @@ from .const import (
     DEFAULT_SCAN_INTERVAL,
     DOMAIN,
     LEGACY_CONF_FAMILY_IDS,
+    mask_account,
 )
 
 
 class CannotConnect(Exception):
     """Error to indicate we cannot connect."""
-
-
-def _mask_account(username: str) -> str:
-    """Mask a phone-like account name used as the config entry title.
-
-    The entry title is what users see in Settings → Devices & services, and it
-    ends up in every screenshot and issue report. MosHome accounts are phone
-    numbers, so keep the ends and hide the middle.
-    """
-    digits = username.strip()
-    if len(digits) >= 8 and digits.isdigit():
-        return f"{digits[:3]}****{digits[-4:]}"
-    return username
 
 
 async def _validate_credentials(
@@ -60,7 +48,7 @@ async def _validate_credentials(
 class BullConfigFlow(ConfigFlow, domain=DOMAIN):
     """Handle a config flow for Bull IoT."""
 
-    VERSION = 1
+    VERSION = 2
 
     def __init__(self) -> None:
         self._pending_data: dict[str, Any] = {}
@@ -117,7 +105,7 @@ class BullConfigFlow(ConfigFlow, domain=DOMAIN):
                     CONF_MQTT_ENABLED: user_input[CONF_MQTT_ENABLED],
                 }
                 return self.async_create_entry(
-                    title=_mask_account(self._pending_data[CONF_USERNAME]),
+                    title=mask_account(self._pending_data[CONF_USERNAME]),
                     data=data,
                 )
             errors["base"] = "no_family_selected"

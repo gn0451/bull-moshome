@@ -10,10 +10,23 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady
 
-from .const import DOMAIN, PLATFORMS
+from .const import DOMAIN, PLATFORMS, mask_account
 from .coordinator import BullCoordinator
 
 _LOGGER = logging.getLogger(__name__)
+
+
+async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+    """Migrate older entries in place.
+
+    Version 2 masks the account name in the entry title. Older entries were
+    created with the raw username, which is a phone number.
+    """
+    if entry.version < 2:
+        new_title = mask_account(entry.title)
+        hass.config_entries.async_update_entry(entry, title=new_title, version=2)
+        _LOGGER.debug("配置条目名已脱敏: %s", new_title)
+    return True
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
