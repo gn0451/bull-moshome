@@ -110,6 +110,14 @@ python homeassistant/tests/test_e2e.py
   （见 PROTOCOL.md 第 11.2 节）
 - MQTT 属性回推需设备状态变化时触发（监听窗口内无物理操作则只看到绑定应答）
 
+## 联系方式
+
+技术交流 / 问题反馈欢迎加微信（加好友请注明 **BULL**）：
+
+![WeChat QR](docs/wechat-qr.png)
+
+也可以直接在 GitHub 仓库提 [Issue](../../issues)。
+
 ## License
 
 MIT，见 [LICENSE](LICENSE)。

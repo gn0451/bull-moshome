@@ -271,4 +271,14 @@ A: 充电桩走 `invoke_thing_service`（如 `SheduleAuth` 激活充电）；带
 
 ---
 
+## 联系方式
+
+技术交流 / 问题反馈欢迎加微信（加好友请注明 **BULL**）：
+
+![WeChat QR](docs/wechat-qr.png)
+
+也可以直接在 GitHub 仓库提 Issue。
+
+---
+
 *本项目仅用于个人设备接入与学习研究。使用本代码产生的一切后果由使用者自行承担。*

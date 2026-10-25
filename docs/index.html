@@ -192,6 +192,11 @@
   .foot-links a:hover { color: var(--cyan); text-shadow: 0 0 12px rgba(0,240,255,.6); }
   .disclaimer { font-size: 12.5px; color: #4d6076; margin-top: 18px; max-width: 640px; }
 
+  .foot-qr { display: flex; align-items: center; gap: 14px; margin-top: 18px; }
+  .foot-qr img { width: 108px; height: 108px; border-radius: 10px; background: #fff; padding: 6px; border: 1px solid var(--line-strong); box-shadow: 0 0 24px rgba(0,240,255,.15); }
+  .foot-qr .qr-note { font-size: 12.5px; color: var(--muted); line-height: 1.7; }
+  .foot-qr .qr-note b { color: var(--cyan); font-family: var(--mono); font-size: 12px; letter-spacing: .06em; }
+
   /* 入场动画 */
   .reveal { opacity: 0; transform: translateY(26px); transition: opacity .7s ease, transform .7s ease; }
   .reveal.in { opacity: 1; transform: none; }
@@ -501,6 +506,10 @@
       <div>
         <div style="font-family:var(--mono); color:var(--cyan); font-size:15px; letter-spacing:.1em;">BULL IOT REVERSE</div>
         <p class="disclaimer">本项目仅用于个人设备接入与学习研究。通过云端接口控制大功率设备存在安全风险，请谨慎设置自动化。使用本代码产生的一切后果由使用者自行承担。</p>
+        <div class="foot-qr">
+          <img src="wechat-qr.png" alt="微信二维码（技术交流）">
+          <div class="qr-note"><b>WECHAT</b><br>技术交流 / 问题反馈<br>加好友请注明 <b>BULL</b></div>
+        </div>
       </div>
       <div class="foot-links">
         <a href="PROTOCOL.md">PROTOCOL.md ↗</a>
