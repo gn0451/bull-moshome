@@ -9,7 +9,9 @@
 - Warn when the MQTT account bind is rejected instead of silently falling back to polling.
 - Move the Thing Service charger PID list into `device_profiles.json` so device lists have one source.
 - Unify the `bull_iot/` and `custom_components/bull/` client copies; the CLI now exposes the BLE helpers too.
-- Declare `requests`, `cryptography`, `bleak` and `bleak-retry-connector` in the manifest.
+- Declare `bleak` and `bleak-retry-connector` in the manifest. `requests` and `cryptography` are
+  intentionally left out: Hassfest rejects custom integrations that list Home Assistant core
+  dependencies, and both are guaranteed to be present at runtime.
 - Add `scripts/check_consistency.py`, a Ruff configuration, issue templates and `RELEASING.md`.
 - Document the plaintext MQTT channel, the hass-iotbull relationship and the migration path.
 
