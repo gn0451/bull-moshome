@@ -18,18 +18,16 @@
 
 ## 1. 这是什么
 
-对公牛智家云（`api.iotbull.com`，App 名"公牛智家"/MosHome）进行**独立协议分析**的成果：
+本项目围绕公牛智家云（`api.iotbull.com`，App 名"公牛智家"/MosHome）提供：
 
 - 完整的 HTTP 客户端（登录、家庭/设备列表、属性控制、服务调用）
 - MQTT 实时状态通道（设备被物理操作后云端秒级回推）
-- Home Assistant 自定义集成（开关 / 传感器 / 在线状态）
-- 全部签名、加密算法均有线上网关实测验证（见 PROTOCOL.md 第 11 节）
-
-不依赖、不复用 hass-iotbull 或任何第三方集成代码。
+- Home Assistant 自定义集成（开关、灯、窗帘、传感器、选择器、数值与按钮）
+- 经 MosHome 5.3.1、线上网关和真实设备验证的签名、加密与设备控制能力
 
 **支持设备**（实测出现过的标识符）：G27/G55 系列开关（多通道）、智能插座、
-WiFi 转换器、无线开关/传感器（电池供电）、充电桩等。凡在公牛智家 App 中
-可见的设备，均可通过本客户端控制。
+WiFi 转换器、无线开关/传感器（电池供电）、灯、窗帘和充电桩等。HA 只为
+经过验证的 PID 与能力创建控制实体，未知设备保持连通性或只读状态。
 
 ---
 
@@ -39,7 +37,7 @@ WiFi 转换器、无线开关/传感器（电池供电）、充电桩等。凡�
 
 ```bash
 # 在 Home Assistant 配置目录下（含 configuration.yaml 的目录）
-unzip bull_iot-ha-1.0.0.zip        # 得到 custom_components/bull_iot/
+unzip bull_iot-ha-1.2.0.zip        # 得到 custom_components/bull_iot/
 ```
 
 没有 zip 也可以直接从本仓库复制：
@@ -52,7 +50,7 @@ cp -r homeassistant/custom_components/bull_iot <HA配置目录>/custom_component
 
 ### 2.2 添加集成
 
-设置 → 设备与服务 → **添加集成** → 搜索 `Bull IoT` → 输入账号密码：
+设置 → 设备与服务 → **添加集成** → 搜索 `Bull MosHome` → 输入账号密码：
 
 - 用户名：手机号（账号）
 - 密码：App 内设置的登录密码

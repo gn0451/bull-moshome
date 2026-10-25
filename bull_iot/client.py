@@ -1,6 +1,6 @@
-"""公牛智家云（MosHome / api.iotbull.com）独立客户端。
+"""公牛智家云（MosHome / api.iotbull.com）Python 客户端。
 
-基于对云端 HTTP API 的协议分析独立实现，不依赖任何第三方集成代码。
+协议与设备能力依据 MosHome 5.3.1、云端 API 和真实设备验证结果实现。
 仅使用公牛账号体系内的开放云接口，用于个人设备的接入与自动化。
 """
 

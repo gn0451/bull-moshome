@@ -143,7 +143,7 @@ def cmd_probe(args) -> None:
 
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(
-        prog="bull_iot", description="公牛智家云（MosHome）独立客户端"
+        prog="bull_iot", description="公牛智家云（MosHome）Python 客户端"
     )
     parser.add_argument("--user", help="账号（也可用环境变量 BULL_USERNAME）")
     parser.add_argument("--password", help="密码（也可用环境变量 BULL_PASSWORD）")

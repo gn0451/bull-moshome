@@ -1,4 +1,4 @@
-"""bull_iot - 公牛智家云（MosHome）独立 Python 客户端。"""
+"""bull_iot - 公牛智家云（MosHome）Python 客户端。"""
 
 from .client import (
     AuthenticationError,
@@ -10,11 +10,11 @@ from .client import (
 from .mqtt_listener import BullMqttListener
 
 __all__ = [
-    "BullCloudClient",
-    "BullMqttListener",
-    "BullCloudError",
     "AuthenticationError",
-    "TokenExpiredError",
+    "BullCloudClient",
+    "BullCloudError",
+    "BullMqttListener",
     "Device",
+    "TokenExpiredError",
 ]
 __version__ = "1.2.0"

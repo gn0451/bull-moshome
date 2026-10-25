@@ -1,8 +1,9 @@
-# bull-moshome — 公牛智家云独立客户端 + Home Assistant 集成
+# bull-moshome — 公牛智家云 Python 客户端 + Home Assistant 集成
 
-对公牛智家云（MosHome / `api.iotbull.com`）协议进行**独立分析**后实现的 Python 客户端
-与协议文档。不依赖 hass-iotbull 或任何第三方集成代码，仅依赖 `requests`、
-`cryptography`、`paho-mqtt`。
+面向公牛智家云（MosHome / `api.iotbull.com`）的 Python 客户端、Home Assistant
+集成与协议文档。核心签名、加密、设备能力和控制边界来自 MosHome 5.3.1
+协议分析、线上 API 验证及真实设备验收，仅依赖 `requests`、`cryptography`、
+`paho-mqtt`。
 
 协议细节见 [PROTOCOL.md](PROTOCOL.md)（含协议分析过程、签名算法、全部端点）。
 
@@ -89,7 +90,7 @@ PROTOCOL.md        # 协议分析文档
 ## Home Assistant 集成
 
 `homeassistant/` 目录是本客户端对应的 **Home Assistant 自定义集成**，
-保留独立客户端架构，并把生产验证过的设备边界整理为 HA 的开关、灯、
+保留 Python 客户端架构，并把真实设备验证过的能力整理为 HA 的开关、灯、
 窗帘、传感器、选择器、数值、按钮和在线状态实体：
 
 ```bash

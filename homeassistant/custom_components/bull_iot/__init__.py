@@ -1,7 +1,6 @@
 """公牛智家云（MosHome）Home Assistant 自定义集成。
 
-基于独立实现的 bull_iot 客户端（client/signing/crypto/mqtt_listener 四个模块
-随本组件一同分发，自包含，无外部依赖）。
+使用随组件分发的 bull_iot 客户端模块（client/signing/crypto/mqtt_listener）。
 支持：开关、灯、窗帘、安防/电量传感器、PID 296 数显插座及充电桩。
 """
 
@@ -24,7 +23,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         await coordinator.async_config_entry_first_refresh()
     except ConfigEntryAuthFailed:
         raise
-    except Exception as err:  # noqa: BLE001
+    except Exception as err:
         raise ConfigEntryNotReady(f"无法连接公牛智家云: {err}") from err
 
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = coordinator
