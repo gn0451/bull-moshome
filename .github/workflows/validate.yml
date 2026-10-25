@@ -2,6 +2,8 @@ name: Validate
 
 on:
   push:
+    branches:
+      - main
   pull_request:
   schedule:
     - cron: "0 0 * * 0"
@@ -29,5 +31,5 @@ jobs:
         run: pip install pytest homeassistant requests cryptography paho-mqtt
       - name: Run offline tests
         run: |
-          pytest -q tests/test_client_unit.py
+          python -m pytest -q tests/test_client_unit.py
           python homeassistant/tests/test_e2e.py
