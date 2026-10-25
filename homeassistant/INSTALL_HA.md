@@ -1,6 +1,6 @@
 # 公牛智家（MosHome）Home Assistant 自定义集成 — 安装说明
 
-> 本集成基于对公牛智家云（api.iotbull.com）的**独立协议逆向**实现，
+> 本集成基于对公牛智家云（api.iotbull.com）的协议的**独立分析**实现，
 > 不依赖、不复用任何第三方插件代码。协议细节见 `../PROTOCOL.md`。
 
 ## 一、集成能力
@@ -51,7 +51,7 @@
 | 轮询间隔 | 60 秒 | 范围 15–3600；MQTT 在线时可适当调大 |
 | MQTT 实时推送 | 开 | 关闭后仅靠轮询更新状态 |
 
-## 四、已知限制（来自逆向实测）
+## 四、已知限制（来自云端实测）
 
 1. **家庭列表上限 50 条**：`/v2/families` 接口硬上限 50 条且忽略一切分页参数、
    无搜索端点。账号下家庭超过 50 个时，只能覆盖最近访问的 50 个。
@@ -69,7 +69,7 @@
 
 | | 本集成 | hass-iotbull |
 |---|---|---|
-| 协议实现 | 从零独立逆向（`PROTOCOL.md` 有完整推导） | 社区早期逆向成果 |
+| 协议实现 | 从零独立分析（`PROTOCOL.md` 有完整推导） | 社区早期实现 |
 | 分发方式 | 手动复制 zip | HACS |
 | 实时通道 | MQTT 长连接 + 轮询 | 轮询为主 |
 | 凭证失效处理 | 自动重登 + reauth 对话框 | 需手动重加 |
@@ -88,7 +88,7 @@ custom_components/bull_iot/
 ├── const.py             # 常量
 ├── manifest.json        # 依赖声明（requests/cryptography/paho-mqtt）
 ├── strings.json         # UI 文案
-├── client.py            # 公牛智家云 HTTP 客户端（独立逆向）
+├── client.py            # 公牛智家云 HTTP 客户端（独立实现）
 ├── signing.py           # x-ca-* HMAC-SHA256 签名
 ├── crypto.py            # 登录字段加密（AES + 双 sha256）
 └── mqtt_listener.py     # MQTT 实时状态监听

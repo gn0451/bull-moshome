@@ -32,7 +32,7 @@ HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST -H "$AUTH" \
     -d "{
         \"name\": \"${REPO_NAME}\",
         \"private\": ${PRIVATE},
-        \"description\": \"公牛智家云(MosHome)独立逆向客户端 + Home Assistant 自定义集成\",
+        \"description\": \"公牛智家云(MosHome)独立客户端 + Home Assistant 自定义集成\",
         \"has_issues\": true,
         \"has_wiki\": false
     }")

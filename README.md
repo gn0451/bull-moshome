@@ -1,10 +1,10 @@
-# bull-moshome — 公牛智家云独立逆向客户端 + Home Assistant 集成
+# bull-moshome — 公牛智家云独立客户端 + Home Assistant 集成
 
-对公牛智家云（MosHome / `api.iotbull.com`）协议**独立逆向**后实现的 Python 客户端
+对公牛智家云（MosHome / `api.iotbull.com`）协议进行**独立分析**后实现的 Python 客户端
 与协议文档。不依赖 hass-iotbull 或任何第三方集成代码，仅依赖 `requests`、
 `cryptography`、`paho-mqtt`。
 
-协议细节见 [PROTOCOL.md](PROTOCOL.md)（含逆向方法论、签名算法、全部端点）。
+协议细节见 [PROTOCOL.md](PROTOCOL.md)（含协议分析过程、签名算法、全部端点）。
 
 > **完整使用指南**（HA 集成安装、自动化示例、Python/CLI 用法、FAQ）见 [GUIDE.md](GUIDE.md)。
 
@@ -79,7 +79,7 @@ homeassistant/     # Home Assistant 自定义集成（bull_iot）
   INSTALL_HA.md                 # 安装说明
   bull_iot-ha-1.0.0.zip         # 一键安装包
   tests/test_e2e.py             # 集成端到端 mock 测试（需安装 homeassistant）
-PROTOCOL.md        # 协议逆向文档
+PROTOCOL.md        # 协议分析文档
 ```
 
 ## Home Assistant 集成
