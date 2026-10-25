@@ -108,6 +108,10 @@ python homeassistant/tests/test_e2e.py
   （见 PROTOCOL.md 第 11.2 节）
 - MQTT 属性回推需设备状态变化时触发（监听窗口内无物理操作则只看到绑定应答）
 
+## License
+
+MIT，见 [LICENSE](LICENSE)。
+
 ## 免责声明
 
 本项目仅用于个人设备接入与学习研究。通过云端接口控制大功率设备（如充电桩、
