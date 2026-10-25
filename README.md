@@ -15,6 +15,10 @@
 - 家庭 / 房间 / 设备列表（含属性快照、型号、固件版本）
 - 设备控制（`set_property` / `set_properties` / `invoke_thing_service`）
 - MQTT 实时监听设备状态回推（物理按键操作后云端推送）
+- Home Assistant 配置时选择家庭，避免遍历账号下全部家庭
+- 已验证 PID 白名单，避免把无线情景面板误识别为负载开关
+- PID 296 数显桌面充电站：总电源、六路 USB、熄屏、功率模式、亮度与逐口遥测
+- 充电桩：普通云属性、PID 193/195 Thing Service、PID 258 激活按钮和 PID 309 本地 BLE
 
 ## 安装
 
@@ -77,7 +81,7 @@ examples/          # 示例脚本
 homeassistant/     # Home Assistant 自定义集成（bull_iot）
   custom_components/bull_iot/   # 自包含组件（含客户端四模块副本）
   INSTALL_HA.md                 # 安装说明
-  bull_iot-ha-1.0.0.zip         # 一键安装包
+  bull_iot-ha-1.2.0.zip         # 一键安装包
   tests/test_e2e.py             # 集成端到端 mock 测试（需安装 homeassistant）
 PROTOCOL.md        # 协议分析文档
 ```
@@ -85,16 +89,18 @@ PROTOCOL.md        # 协议分析文档
 ## Home Assistant 集成
 
 `homeassistant/` 目录是本客户端对应的 **Home Assistant 自定义集成**，
-不依赖 hass-iotbull，把设备接入 HA 的开关 / 传感器 / 在线状态实体：
+保留独立客户端架构，并把生产验证过的设备边界整理为 HA 的开关、灯、
+窗帘、传感器、选择器、数值、按钮和在线状态实体：
 
 ```bash
 # 解压即用（在 HA 配置目录下）
-unzip homeassistant/bull_iot-ha-1.0.0.zip
-# -> custom_components/bull_iot/，然后重启 HA，UI 搜索 "Bull IoT" 添加
+unzip homeassistant/bull_iot-ha-1.2.0.zip
+# -> custom_components/bull_iot/，然后重启 HA，UI 搜索 "Bull MosHome" 添加
 ```
 
 详见 [homeassistant/INSTALL_HA.md](homeassistant/INSTALL_HA.md)。
-集成端到端测试（mock，15 个用例覆盖 config flow / coordinator / 三平台 / MQTT 回推）：
+集成端到端测试覆盖 config flow、家庭筛选、coordinator、八个平台、PID
+只读保护、充电专用功能、BLE 协议基础与 MQTT 回推：
 
 ```bash
 pip install homeassistant==2024.3.3   # 或任意 >=2024.3 版本

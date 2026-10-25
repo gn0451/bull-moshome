@@ -9,22 +9,28 @@ import asyncio
 import sys
 import types
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 # 组件目录 = <repo>/homeassistant/custom_components（相对本测试文件定位）
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "custom_components"))
 
-from homeassistant.exceptions import ConfigEntryAuthFailed  # noqa: E402
-from homeassistant.helpers.update_coordinator import UpdateFailed  # noqa: E402
+import bull_iot.binary_sensor as bs_mod
+import bull_iot.ble as ble_mod
+import bull_iot.ble_charger as ble_charger_mod
+import bull_iot.button as button_mod
+import bull_iot.config_flow as cf_mod
+import bull_iot.coordinator as coord_mod
+import bull_iot.cover as cover_mod
+import bull_iot.light as light_mod
+import bull_iot.number as number_mod
+import bull_iot.select as select_mod
+import bull_iot.sensor as sensor_mod
+import bull_iot.switch as switch_mod
+from bull_iot.const import CONF_FAMILY_IDS, CONF_MQTT_ENABLED, DOMAIN
+from homeassistant.exceptions import ConfigEntryAuthFailed
+from homeassistant.helpers.update_coordinator import UpdateFailed
 
-import bull_iot  # noqa: E402
-import bull_iot.binary_sensor as bs_mod  # noqa: E402
-import bull_iot.config_flow as cf_mod  # noqa: E402
-import bull_iot.coordinator as coord_mod  # noqa: E402
-import bull_iot.sensor as sensor_mod  # noqa: E402
-import bull_iot.switch as switch_mod  # noqa: E402
-from bull_iot.client import AuthenticationError, BullCloudError, Device  # noqa: E402
-from bull_iot.const import DOMAIN  # noqa: E402
+from bull_iot.client import AuthenticationError, BullCloudError, Device
 
 PASSED = []
 FAILED = []
@@ -56,6 +62,7 @@ class FakeHass:
             async_update_entry=MagicMock(return_value=True),
             async_schedule_reload=MagicMock(),
             async_get_entry=MagicMock(return_value=None),
+            async_get_known_entry=MagicMock(return_value=None),
             async_entry_for_domain_unique_id=MagicMock(return_value=None),
             flow=MagicMock(),
         )
@@ -66,7 +73,12 @@ class FakeHass:
 
 class FakeEntry:
     def __init__(self, data=None, options=None):
-        self.data = data or {"username": "13800138000", "password": "secret"}
+        self.data = data or {
+            "username": "13800138000",
+            "password": "secret",
+            CONF_FAMILY_IDS: [1001],
+            CONF_MQTT_ENABLED: False,
+        }
         self.options = options or {}
         self.entry_id = "test_entry_1"
         self.title = "13800138000"
@@ -76,7 +88,7 @@ def make_fake_device():
     """一台 G27 三位开关（模拟真实抓包结构）。"""
     dev = Device(
         iot_id="fake_iot_001",
-        product_id=1234,
+        product_id=6,
         name="进门射灯",
         room="客厅",
         status="ONLINE",
@@ -110,7 +122,10 @@ async def make_coordinator(hass, entry, device=None):
     """构造 coordinator、执行首刷、注册进 hass.data（模拟 __init__.py 的行为）。"""
     client = make_fake_client()
     if device is not None:
-        client.refresh_devices.side_effect = lambda d, f=None: {**d, device.iot_id: device}
+        client.refresh_devices.side_effect = lambda d, f=None: {
+            **d,
+            device.iot_id: device,
+        }
     with patch.object(coord_mod, "BullCloudClient", return_value=client):
         coordinator = coord_mod.BullCoordinator(hass, entry)
     await coordinator._async_update_data()
@@ -131,12 +146,22 @@ async def test_config_flow_user_success():
     flow.flow_id = "flow1"
     flow.context = {"source": "user"}
 
-    with patch.object(cf_mod, "_validate_credentials", new=lambda hass, u, p: asyncio.sleep(0)):
-        result = await flow.async_step_user(
+    async def valid(hass, username, password):
+        return "fake_openid", [{"familyId": 1001, "familyName": "家", "deviceCount": 3}]
+
+    with patch.object(cf_mod, "_validate_credentials", new=valid):
+        select_result = await flow.async_step_user(
             {"username": "13800138000", "password": "secret"}
+        )
+        assert select_result["type"] == "form", select_result
+        assert select_result["step_id"] == "select_family", select_result
+        result = await flow.async_step_select_family(
+            {CONF_FAMILY_IDS: ["1001"], CONF_MQTT_ENABLED: False}
         )
     assert result["type"] == "create_entry", result
     assert result["data"]["username"] == "13800138000"
+    assert result["data"][CONF_FAMILY_IDS] == [1001]
+    assert result["data"][CONF_MQTT_ENABLED] is False
 
 
 async def test_config_flow_user_bad_credentials():
@@ -180,6 +205,7 @@ async def test_config_flow_reauth_flow():
     hass = FakeHass()
     entry = FakeEntry()
     hass.config_entries.async_get_entry = MagicMock(return_value=entry)
+    hass.config_entries.async_get_known_entry = MagicMock(return_value=entry)
 
     flow = cf_mod.BullConfigFlow()
     flow.hass = hass
@@ -188,7 +214,7 @@ async def test_config_flow_reauth_flow():
     flow.context = {"source": "reauth", "entry_id": entry.entry_id}
 
     async def ok_validate(hass_, u, p):
-        return None
+        return "fake_openid", []
 
     with patch.object(cf_mod, "_validate_credentials", new=ok_validate):
         # 第一步：自动跳到 confirm 表单
@@ -217,6 +243,8 @@ async def test_coordinator_first_refresh():
     assert device.iot_id in data
     assert coordinator.devices is data
     assert coordinator.client.login.call_count == 0  # token 有效，无需登录
+    assert coordinator.client.refresh_devices.call_count == 1
+    assert coordinator.client.refresh_devices.call_args.args[1] == [1001]
 
 
 async def test_coordinator_login_when_no_token():
@@ -344,9 +372,56 @@ async def test_switch_platform():
     await ent.async_turn_off()
     assert device.properties["PowerSwitch_1"] == 0
     assert ent.is_on is False
-    client.set_property.assert_called_once_with(
-        device.iot_id, "PowerSwitch_1", 0
-    )
+    client.set_properties.assert_called_once_with(device.iot_id, {"PowerSwitch_1": 0})
+
+
+async def test_switch_read_only_products():
+    """情景面板即使暴露 PowerSwitch，也不能生成负载开关。"""
+    for product_id in (3, 20, 21, 69):
+        hass = FakeHass()
+        entry = FakeEntry()
+        device = make_fake_device()
+        device.product_id = product_id
+        await make_coordinator(hass, entry, device)
+        added = []
+        await switch_mod.async_setup_entry(
+            hass, entry, lambda entities, target=added: target.extend(entities)
+        )
+        assert added == [], f"PID {product_id} 不应生成控制开关"
+
+
+async def test_light_platform():
+    """已验证灯 PID 按属性指纹生成可调光实体。"""
+    hass = FakeHass()
+    entry = FakeEntry()
+    device = make_fake_device()
+    device.product_id = 79
+    device.properties = {
+        "PowerSwitch": 1,
+        "BrightValue": 500,
+        "ColorTemperature": 500,
+        "PowerGradation": 1,
+    }
+    await make_coordinator(hass, entry, device)
+    added = []
+    await light_mod.async_setup_entry(hass, entry, lambda ents: added.extend(ents))
+    assert len(added) == 1
+    assert added[0].is_on is True
+    assert 120 <= added[0].brightness <= 130
+
+
+async def test_cover_platform():
+    """已验证窗帘 PID 按精确协议属性生成 cover。"""
+    hass = FakeHass()
+    entry = FakeEntry()
+    device = make_fake_device()
+    device.product_id = 31
+    device.properties = {"curtainConrtol": 2, "curtainPosition": 35}
+    await make_coordinator(hass, entry, device)
+    added = []
+    await cover_mod.async_setup_entry(hass, entry, lambda ents: added.extend(ents))
+    assert len(added) == 1
+    assert added[0].current_cover_position == 35
 
 
 async def test_switch_single_channel_device():
@@ -355,14 +430,14 @@ async def test_switch_single_channel_device():
     entry = FakeEntry()
     device = Device(
         iot_id="fake_plug_001",
-        product_id=5678,
+        product_id=13,
         name="插座",
         status="ONLINE",
         product_name="智能插座",
     )
     device.properties["PowerSwitch"] = 1
 
-    coordinator = await make_coordinator(hass, entry, device)
+    await make_coordinator(hass, entry, device)
 
     added = []
     await switch_mod.async_setup_entry(hass, entry, lambda ents: added.extend(ents))
@@ -377,7 +452,7 @@ async def test_sensor_platform():
     entry = FakeEntry()
     device = make_fake_device()
 
-    coordinator = await make_coordinator(hass, entry, device)
+    await make_coordinator(hass, entry, device)
 
     added = []
     await sensor_mod.async_setup_entry(hass, entry, lambda ents: added.extend(ents))
@@ -394,13 +469,219 @@ async def test_sensor_platform():
     assert volt.native_value == 220.5, volt.native_value
 
 
+async def test_digital_display_socket_platforms():
+    """PID 296 exposes dedicated ports, display settings and telemetry."""
+    hass = FakeHass()
+    entry = FakeEntry()
+    device = Device(
+        iot_id="socket_296",
+        product_id=296,
+        name="数显插座",
+        status="ONLINE",
+        product_name="数显桌面充电站",
+    )
+    device.properties = {
+        "PowerSwitch": 1,
+        "C1": {"PowerSwitch": 1, "RealTimePower": 65, "CurrentProtocol": 1},
+        "ChargeMode": 4,
+        "OffScreenTime": 2,
+        "TimerType": 1,
+        "ScreenBrightValue": 66,
+        "OffScreenSwitch": 1,
+    }
+    await make_coordinator(hass, entry, device)
+
+    switches = []
+    selects = []
+    numbers = []
+    sensors = []
+    await switch_mod.async_setup_entry(
+        hass, entry, lambda values: switches.extend(values)
+    )
+    await select_mod.async_setup_entry(
+        hass, entry, lambda values: selects.extend(values)
+    )
+    await number_mod.async_setup_entry(
+        hass, entry, lambda values: numbers.extend(values)
+    )
+    await sensor_mod.async_setup_entry(
+        hass, entry, lambda values: sensors.extend(values)
+    )
+
+    assert len(switches) == 8
+    assert len(selects) == 3
+    assert len(numbers) == 1
+    assert len(sensors) == 36
+    c1 = next(entity for entity in switches if entity._port == "C1")
+    assert c1.is_on is True
+    protocol = next(
+        entity
+        for entity in sensors
+        if getattr(entity, "_port", None) == "C1"
+        and getattr(entity, "_suffix", None) == "CurrentProtocol"
+    )
+    assert protocol.native_value == "PD"
+    mode = next(entity for entity in selects if entity._identifier == "ChargeMode")
+    assert mode.current_option == "custom_1"
+    assert "custom_1" in mode.options
+    mode.async_write_ha_state = lambda: None
+    await mode.async_select_option("smart")
+    assert device.properties["ChargeMode"] == 0
+    numbers[0].async_write_ha_state = lambda: None
+    await numbers[0].async_set_native_value(80)
+    assert device.properties["ScreenBrightValue"] == 80
+
+    device.properties["PowerSwitch"] = 0
+    assert c1.available is False
+    assert numbers[0].available is False
+
+
+async def test_mapped_charger_button():
+    """PID 258 activation button follows the explicit state guard."""
+    hass = FakeHass()
+    entry = FakeEntry()
+    device = Device(
+        iot_id="charger_258",
+        product_id=258,
+        name="充电桩",
+        status="ONLINE",
+        product_name="公牛充电桩",
+    )
+    device.properties = {"DeviceWorkState.WorkState": 8}
+    coordinator = await make_coordinator(hass, entry, device)
+    added = []
+    await button_mod.async_setup_entry(hass, entry, lambda values: added.extend(values))
+    assert len(added) == 1
+    assert added[0].available is True
+    await added[0].async_press()
+    coordinator.client.invoke_thing_service.assert_called_once_with(
+        device.iot_id, "SheduleAuth"
+    )
+    device.properties["DeviceWorkState.WorkState"] = 2
+    assert added[0].available is False
+
+
+async def test_cloud_thing_service_charger():
+    """PID 193/195 uses AppStopCharge and confirms the state transition."""
+    hass = FakeHass()
+    entry = FakeEntry()
+    device = Device(
+        iot_id="charger_193",
+        product_id=193,
+        name="交流充电桩",
+        status="ONLINE",
+        product_name="公牛充电桩",
+    )
+    device.properties = {
+        "DeviceState.WorkState": 2,
+        "DeviceState.GunState": 1,
+    }
+    coordinator = await make_coordinator(hass, entry, device)
+    added = []
+    await switch_mod.async_setup_entry(hass, entry, lambda values: added.extend(values))
+    assert len(added) == 1
+    assert added[0].is_on is True
+
+    async def transition():
+        device.properties["DeviceState.WorkState"] = 3
+
+    coordinator.async_request_refresh = AsyncMock(side_effect=transition)
+    await added[0].async_turn_off()
+    coordinator.client.invoke_thing_service.assert_called_once_with(
+        device.iot_id, "AppStopCharge"
+    )
+
+
+async def test_ble_protocol_and_telemetry_decode():
+    """PID 309 BLE primitives decode identity, crypto and charger telemetry."""
+    key = bytes.fromhex("00112233445566778899AABBCCDDEEFF")
+    iv = b"0123456789ABCDEF"
+    clear = b"bull-ble"
+    cipher = ble_mod._encrypt(clear, key, iv)
+    assert ble_mod._decrypt(cipher, len(clear), key, iv) == clear
+    assert ble_charger_mod.dn_from_ble_address("AA:BB:CC:DD:EE:FF") == "AABBCCDDEEFF"
+    assert ble_charger_mod.dn_from_ble_address("not-a-mac") is None
+
+    device = Device(
+        iot_id="charger_309",
+        product_id=309,
+        name="D3 充电桩",
+        status="ONLINE",
+    )
+    updates = []
+    charger = ble_charger_mod.BullBleCharger(
+        MagicMock(),
+        device,
+        ble_mod.BleIdentity(309, "AABBCCDDEEFF"),
+        AsyncMock(),
+        AsyncMock(),
+        lambda: updates.append(True),
+    )
+    charger._apply(ble_charger_mod.ATTR_WORK_STATE, b"\x02")
+    charger._apply(ble_charger_mod.ATTR_CHARGE_MODE, b"\x01")
+    assert device.properties["WorkState"] == 2
+    assert device.properties["ChargeSwitch"] == 1
+    assert device.properties["ChargeMode"] == 1
+    assert len(updates) == 2
+
+
+async def test_ble_charger_has_no_cloud_property_fallback():
+    """PID 309 stays non-controllable when no valid BLE identity is available."""
+    hass = FakeHass()
+    entry = FakeEntry()
+    device = Device(
+        iot_id="charger_309_no_identity",
+        product_id=309,
+        name="D3 充电桩",
+        status="ONLINE",
+    )
+    device.properties = {"ChargeSwitch": 0, "ChargeMode": 0}
+    await make_coordinator(hass, entry, device)
+    switches = []
+    selects = []
+    await switch_mod.async_setup_entry(
+        hass, entry, lambda values: switches.extend(values)
+    )
+    await select_mod.async_setup_entry(
+        hass, entry, lambda values: selects.extend(values)
+    )
+    assert switches == []
+    assert len(selects) == 1
+    assert selects[0].available is False
+
+
+async def test_ble_charger_coordinator_lifecycle():
+    """A valid PID 309 identity starts once and is stopped during unload."""
+    hass = FakeHass()
+    entry = FakeEntry()
+    device = Device(
+        iot_id="charger_309_lifecycle",
+        product_id=309,
+        name="D3 充电桩",
+        status="ONLINE",
+        raw={"deviceName": "AABBCCDDEEFF"},
+    )
+    fake_charger = MagicMock(available=False)
+    fake_charger.async_start = AsyncMock()
+    fake_charger.async_stop = AsyncMock()
+    with patch.object(
+        ble_charger_mod, "BullBleCharger", return_value=fake_charger
+    ) as charger_class:
+        coordinator = await make_coordinator(hass, entry, device)
+        assert coordinator.ble_chargers[device.iot_id] is fake_charger
+        fake_charger.async_start.assert_awaited_once()
+        charger_class.assert_called_once()
+        await coordinator.async_shutdown()
+        fake_charger.async_stop.assert_awaited_once()
+
+
 async def test_binary_sensor_platform():
     """binary_sensor 平台：在线状态。"""
     hass = FakeHass()
     entry = FakeEntry()
     device = make_fake_device()
 
-    coordinator = await make_coordinator(hass, entry, device)
+    await make_coordinator(hass, entry, device)
 
     added = []
     await bs_mod.async_setup_entry(hass, entry, lambda ents: added.extend(ents))
@@ -418,7 +699,9 @@ async def test_options_flow():
     flow.flow_id = "flow5"
     flow.context = {"source": "user"}
 
-    result = await flow.async_get_options_flow(FakeEntry()).async_step_init(
+    options_flow = flow.async_get_options_flow(FakeEntry())
+    options_flow._config_entry = FakeEntry()
+    result = await options_flow.async_step_init(
         {"scan_interval": 30, "mqtt_enabled": False}
     )
     assert result["type"] == "create_entry", result
@@ -435,12 +718,27 @@ async def main():
         ("coordinator: 首刷", test_coordinator_first_refresh),
         ("coordinator: 无 token 先登录", test_coordinator_login_when_no_token),
         ("coordinator: token 恢复", test_coordinator_token_recovery),
-        ("coordinator: 重登失败 -> reauth", test_coordinator_relogin_failure_raises_auth_failed),
-        ("coordinator: 普通错误 -> unavailable", test_coordinator_generic_error_is_update_failed),
+        (
+            "coordinator: 重登失败 -> reauth",
+            test_coordinator_relogin_failure_raises_auth_failed,
+        ),
+        (
+            "coordinator: 普通错误 -> unavailable",
+            test_coordinator_generic_error_is_update_failed,
+        ),
         ("coordinator: MQTT 属性回推", test_mqtt_property_applied),
         ("switch 平台", test_switch_platform),
+        ("switch 只读 PID 保护", test_switch_read_only_products),
         ("switch 平台（单键设备）", test_switch_single_channel_device),
+        ("light 平台", test_light_platform),
+        ("cover 平台", test_cover_platform),
         ("sensor 平台", test_sensor_platform),
+        ("PID 296 数显插座专用平台", test_digital_display_socket_platforms),
+        ("PID 258 充电激活按钮", test_mapped_charger_button),
+        ("PID 193/195 云端充电桩", test_cloud_thing_service_charger),
+        ("PID 309 BLE 协议与遥测解析", test_ble_protocol_and_telemetry_decode),
+        ("PID 309 禁止云属性降级控制", test_ble_charger_has_no_cloud_property_fallback),
+        ("PID 309 BLE 生命周期", test_ble_charger_coordinator_lifecycle),
         ("binary_sensor 平台", test_binary_sensor_platform),
         ("options 流", test_options_flow),
     ]

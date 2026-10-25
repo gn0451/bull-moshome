@@ -1,6 +1,6 @@
 {
   "config": {
-    "flow_title": "公牛智家 (MosHome)",
+    "flow_title": "Bull MosHome",
     "step": {
       "user": {
         "title": "连接公牛智家云",
@@ -8,6 +8,14 @@
         "data": {
           "username": "账号",
           "password": "密码"
+        }
+      },
+      "select_family": {
+        "title": "选择要接入的家庭",
+        "description": "只选择需要导入 Home Assistant 的家庭，避免轮询账号下所有家庭。",
+        "data": {
+          "family_ids": "家庭",
+          "mqtt_enabled": "启用 MQTT 实时推送（与旧集成并行测试时请关闭）"
         }
       },
       "reauth": {
@@ -29,7 +37,8 @@
     },
     "error": {
       "invalid_auth": "账号或密码错误",
-      "cannot_connect": "无法连接公牛智家云，请稍后重试"
+      "cannot_connect": "无法连接公牛智家云，请稍后重试",
+      "no_family_selected": "请至少选择一个家庭"
     },
     "abort": {
       "reauth_successful": "重新验证成功"

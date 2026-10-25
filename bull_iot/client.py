@@ -5,7 +5,6 @@
 """
 
 import json
-import time
 from dataclasses import dataclass, field
 from urllib.parse import urlencode, urljoin
 
@@ -63,8 +62,10 @@ class Device:
 
     def describe(self) -> str:
         lines = [
-            f"  [{self.iot_id}] {self.name or self.product_name}"
-            f"  (房间: {self.room or '-'}, 状态: {self.status or '-'})",
+            (
+                f"  [{self.iot_id}] {self.name or self.product_name}"
+                f"  (房间: {self.room or '-'}, 状态: {self.status or '-'})"
+            ),
             f"      型号: {self.product_name} / {self.model_name} / 固件 {self.firmware_version}",
         ]
         if self.properties:
@@ -181,7 +182,9 @@ class BullCloudClient:
             )
         except BullCloudError as err:
             if err.code in LOGIN_ERRORS:
-                raise AuthenticationError("登录", err.code, LOGIN_ERRORS[err.code]) from err
+                raise AuthenticationError(
+                    "登录", err.code, LOGIN_ERRORS[err.code]
+                ) from err
             raise
 
         result = res["result"]
@@ -199,7 +202,10 @@ class BullCloudClient:
                 "/mos/uic/v1/auth/token",
                 content_type="application/json; charset=utf-8",
                 body=json.dumps(
-                    {"refresh_token": self.refresh_token, "grant_type": "refresh_token"},
+                    {
+                        "refresh_token": self.refresh_token,
+                        "grant_type": "refresh_token",
+                    },
                     separators=(",", ":"),
                 ),
                 bearer=False,
@@ -249,14 +255,19 @@ class BullCloudClient:
         self, devices: dict[str, Device], family_ids: list[int] | None = None
     ) -> dict[str, Device]:
         """把各家庭设备刷新进已有缓存（新设备才拉取一次详情，适合定时轮询）。"""
-        if not family_ids:
+        if family_ids is None:
             families = self.get_families()
             family_ids = [f["familyId"] for f in families]
 
+        seen_iot_ids: set[str] = set()
         for family_id in family_ids:
             self.switch_family(family_id)
             for info in self.get_rooms_and_devices():
+                seen_iot_ids.add(info["iotId"])
                 self._parse_device(devices, info)
+
+        for iot_id in set(devices) - seen_iot_ids:
+            devices.pop(iot_id, None)
         return devices
 
     def _parse_device(self, devices: dict[str, Device], info: dict) -> None:
@@ -280,6 +291,10 @@ class BullCloudClient:
             devices[iot_id] = device
         else:
             device = devices[iot_id]
+            device.product_id = product_id
+            device.status = info.get("status", device.status)
+            device.room = info.get("roomName", device.room)
+            device.raw = info
             for prop in info.get("property", {}).values():
                 flatten_properties(device.properties, prop["identifier"], prop["value"])
 

@@ -7,10 +7,18 @@ import re
 from homeassistant.components.switch import SwitchEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .const import MANUFACTURER
+from .const import BLE_CHARGER_PRODUCT_IDS, CHARGER_PRODUCT_IDS, SWITCH_PRODUCT_IDS
 from .coordinator import BullCoordinator
+from .digital_display_socket import (
+    DIGITAL_DISPLAY_SOCKET_PORT_NAMES,
+    DIGITAL_DISPLAY_SOCKET_PORTS,
+    DIGITAL_DISPLAY_SOCKET_PRODUCT_IDS,
+    master_power_is_on,
+    port_property_value,
+)
 from .entity import BullDeviceEntity
 
 # 通道属性形如 PowerSwitch_1 / PowerSwitch_12；裸 PowerSwitch 是整设备总开关
@@ -41,6 +49,47 @@ async def async_setup_entry(
     entities: list[BullSwitchEntity] = []
 
     for device in coordinator.data.values():
+        if device.product_id in DIGITAL_DISPLAY_SOCKET_PRODUCT_IDS:
+            entities.append(
+                BullDigitalDisplaySocketSwitch(
+                    coordinator, device.iot_id, "PowerSwitch", "总电源"
+                )
+            )
+            entities.extend(
+                BullDigitalDisplaySocketSwitch(
+                    coordinator,
+                    device.iot_id,
+                    f"{port}PowerSwitch",
+                    DIGITAL_DISPLAY_SOCKET_PORT_NAMES[port],
+                    port=port,
+                    guarded=True,
+                )
+                for port in DIGITAL_DISPLAY_SOCKET_PORTS
+            )
+            entities.append(
+                BullDigitalDisplaySocketSwitch(
+                    coordinator,
+                    device.iot_id,
+                    "OffScreenSwitch",
+                    "自动熄屏",
+                    guarded=True,
+                )
+            )
+            continue
+        if device.product_id in BLE_CHARGER_PRODUCT_IDS:
+            if device.iot_id in coordinator.ble_chargers:
+                entities.append(BullChargerSwitch(coordinator, device.iot_id))
+            continue
+        if device.product_id in CHARGER_PRODUCT_IDS:
+            if (
+                "ChargeSwitch" in device.properties
+                or device.iot_id in coordinator.cloud_chargers
+                or device.iot_id in coordinator.ble_chargers
+            ):
+                entities.append(BullChargerSwitch(coordinator, device.iot_id))
+            continue
+        if device.product_id not in SWITCH_PRODUCT_IDS:
+            continue
         # 收集通道名: __name__PowerSwitch_N -> "客厅吊灯"
         channel_names = {
             key[len("__name__") :]: value
@@ -59,7 +108,13 @@ async def async_setup_entry(
 class BullSwitchEntity(BullDeviceEntity, SwitchEntity):
     """A controllable channel of a Bull device."""
 
-    def __init__(self, coordinator: BullCoordinator, iot_id: str, identifier: str, name: str | None) -> None:
+    def __init__(
+        self,
+        coordinator: BullCoordinator,
+        iot_id: str,
+        identifier: str,
+        name: str | None,
+    ) -> None:
         super().__init__(coordinator, iot_id, identifier, name, "switch")
 
     @property
@@ -80,3 +135,98 @@ class BullSwitchEntity(BullDeviceEntity, SwitchEntity):
         if self._device is not None:
             self._device.properties[self._identifier] = 0
         self.async_write_ha_state()
+
+
+class BullDigitalDisplaySocketSwitch(BullSwitchEntity):
+    """Master, port and screen switches for PID 296."""
+
+    def __init__(
+        self, coordinator, iot_id, identifier, name, *, port=None, guarded=False
+    ):
+        self._port = port
+        self._guarded = guarded
+        super().__init__(coordinator, iot_id, identifier, name)
+
+    @property
+    def available(self) -> bool:
+        device = self._device
+        return bool(
+            super().available
+            and device
+            and (not self._guarded or master_power_is_on(device.properties))
+        )
+
+    @property
+    def is_on(self) -> bool | None:
+        device = self._device
+        if not device:
+            return None
+        value = (
+            port_property_value(device.properties, self._port, "PowerSwitch")
+            if self._port
+            else device.properties.get(self._identifier)
+        )
+        return None if value is None else bool(value)
+
+    def _ensure_available(self) -> None:
+        if (
+            self._guarded
+            and self._device
+            and not master_power_is_on(self._device.properties)
+        ):
+            raise HomeAssistantError("设备总电源已关闭")
+
+    async def async_turn_on(self, **kwargs) -> None:
+        self._ensure_available()
+        await super().async_turn_on(**kwargs)
+
+    async def async_turn_off(self, **kwargs) -> None:
+        self._ensure_available()
+        await super().async_turn_off(**kwargs)
+
+
+class BullChargerSwitch(BullDeviceEntity, SwitchEntity):
+    """Charging switch routed to cloud properties, Thing Service or local BLE."""
+
+    def __init__(self, coordinator, iot_id):
+        super().__init__(coordinator, iot_id, "ChargeSwitch", "充电", "switch")
+
+    @property
+    def available(self) -> bool:
+        if self._iot_id in self.coordinator.ble_chargers:
+            return bool(self.coordinator.ble_chargers[self._iot_id].available)
+        return super().available
+
+    @property
+    def is_on(self) -> bool | None:
+        cloud = self.coordinator.cloud_chargers.get(self._iot_id)
+        if cloud:
+            return cloud.is_charging
+        device = self._device
+        if not device:
+            return None
+        value = device.properties.get("ChargeSwitch")
+        if value is None:
+            value = device.properties.get("WorkState")
+            return None if value is None else value in (2, 10)
+        return bool(value)
+
+    async def _set(self, value: bool) -> None:
+        ble = self.coordinator.ble_chargers.get(self._iot_id)
+        cloud = self.coordinator.cloud_chargers.get(self._iot_id)
+        if ble:
+            await ble.async_set_charging(value)
+        elif self._device and self._device.product_id in BLE_CHARGER_PRODUCT_IDS:
+            raise HomeAssistantError("充电桩 BLE 当前不可用")
+        elif cloud:
+            await cloud.async_set_charging(value)
+        else:
+            await self.coordinator.async_set_property(
+                self._iot_id, "ChargeSwitch", int(value)
+            )
+
+    async def async_turn_on(self, **kwargs) -> None:
+        await self._set(True)
+
+    async def async_turn_off(self, **kwargs) -> None:
+        await self._set(False)

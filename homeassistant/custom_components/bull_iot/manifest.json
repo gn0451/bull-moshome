@@ -1,11 +1,12 @@
 {
   "domain": "bull_iot",
-  "name": "Bull IoT (MosHome 公牛智家)",
-  "version": "1.0.0",
-  "documentation": "https://github.com/",
-  "codeowners": [],
+  "name": "Bull MosHome",
+  "version": "1.2.0",
+  "documentation": "https://github.com/gn0451/bull-moshome",
+  "codeowners": ["@gn0451"],
   "config_flow": true,
-  "iot_class": "cloud_polling",
+  "iot_class": "cloud_push",
   "integration_type": "hub",
+  "dependencies": ["bluetooth"],
   "requirements": ["requests>=2.28", "cryptography>=41", "paho-mqtt>=1.6"]
 }
