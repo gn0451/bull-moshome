@@ -139,9 +139,11 @@ class BullConfigFlow(ConfigFlow, domain=DOMAIN):
         errors: dict[str, str] = {}
         if user_input is not None:
             try:
-                await _validate_credentials(
+                openid, _families = await _validate_credentials(
                     self.hass, user_input[CONF_USERNAME], user_input[CONF_PASSWORD]
                 )
+                if reauth_entry.unique_id and openid != reauth_entry.unique_id:
+                    errors["base"] = "wrong_account"
             except AuthenticationError:
                 errors["base"] = "invalid_auth"
             except CannotConnect:
@@ -175,15 +177,61 @@ class BullConfigFlow(ConfigFlow, domain=DOMAIN):
 class BullOptionsFlow(OptionsFlow):
     """Options flow: polling interval and MQTT push toggle."""
 
+    def __init__(self) -> None:
+        self._families: list[dict] = []
+
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
     ) -> dict[str, Any]:
+        errors: dict[str, str] = {}
         if user_input is not None:
-            return self.async_create_entry(title="", data=user_input)
+            if not user_input[CONF_FAMILY_IDS]:
+                errors["base"] = "no_family_selected"
+            else:
+                user_input[CONF_FAMILY_IDS] = [
+                    int(value) for value in user_input[CONF_FAMILY_IDS]
+                ]
+                return self.async_create_entry(title="", data=user_input)
+
+        if not self._families:
+            try:
+                openid, self._families = await _validate_credentials(
+                    self.hass,
+                    self.config_entry.data[CONF_USERNAME],
+                    self.config_entry.data[CONF_PASSWORD],
+                )
+                if (
+                    self.config_entry.unique_id
+                    and openid != self.config_entry.unique_id
+                ):
+                    errors["base"] = "wrong_account"
+            except AuthenticationError:
+                errors["base"] = "invalid_auth"
+            except CannotConnect:
+                errors["base"] = "cannot_connect"
+
+        family_options = {
+            str(family["familyId"]): (
+                f"{family.get('familyName') or family['familyId']} "
+                f"({family.get('deviceCount', 0)} 台设备)"
+            )
+            for family in self._families
+        }
+        current_family_ids = self.config_entry.options.get(
+            CONF_FAMILY_IDS, self.config_entry.data.get(CONF_FAMILY_IDS, [])
+        )
+        if not family_options:
+            family_options = {
+                str(family_id): str(family_id) for family_id in current_family_ids
+            }
 
         opts = self.config_entry.options
         schema = vol.Schema(
             {
+                vol.Required(
+                    CONF_FAMILY_IDS,
+                    default=[str(value) for value in current_family_ids],
+                ): cv.multi_select(family_options),
                 vol.Required(
                     CONF_SCAN_INTERVAL,
                     default=opts.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL),
@@ -199,4 +247,4 @@ class BullOptionsFlow(OptionsFlow):
                 ): bool,
             }
         )
-        return self.async_show_form(step_id="init", data_schema=schema)
+        return self.async_show_form(step_id="init", data_schema=schema, errors=errors)

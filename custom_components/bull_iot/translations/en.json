@@ -1,0 +1,41 @@
+{
+  "config": {
+    "flow_title": "Bull MosHome",
+    "step": {
+      "user": {
+        "title": "Connect to Bull MosHome",
+        "description": "Enter the username and password configured in the MosHome app.",
+        "data": {"username": "Username", "password": "Password"}
+      },
+      "select_family": {
+        "title": "Select homes",
+        "description": "Import only the MosHome families required by this Home Assistant instance.",
+        "data": {"family_ids": "Homes", "mqtt_enabled": "Enable MQTT push updates"}
+      },
+      "reauth_confirm": {
+        "title": "Reauthenticate Bull MosHome",
+        "description": "Enter credentials for the original account ({username}).",
+        "data": {"username": "Username", "password": "Password"}
+      }
+    },
+    "error": {
+      "invalid_auth": "Invalid username or password",
+      "cannot_connect": "Unable to connect to Bull MosHome",
+      "wrong_account": "This is not the account originally linked to the integration",
+      "no_family_selected": "Select at least one home"
+    },
+    "abort": {"reauth_successful": "Reauthentication succeeded"}
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Bull MosHome options",
+        "data": {
+          "family_ids": "Homes to import",
+          "scan_interval": "Polling interval (seconds)",
+          "mqtt_enabled": "Enable MQTT push updates"
+        }
+      }
+    }
+  }
+}

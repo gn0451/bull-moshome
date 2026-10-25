@@ -45,12 +45,18 @@ class BullCoordinator(DataUpdateCoordinator[dict[str, Device]]):
     def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
         """Initialize the coordinator."""
         interval = int(entry.options.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL))
-        super().__init__(
-            hass,
-            _LOGGER,
-            name=DOMAIN,
-            update_interval=timedelta(seconds=max(15, interval)),
-        )
+        coordinator_kwargs = {
+            "name": DOMAIN,
+            "update_interval": timedelta(seconds=max(15, interval)),
+        }
+        try:
+            super().__init__(hass, _LOGGER, config_entry=entry, **coordinator_kwargs)
+        except TypeError as err:
+            # HA versions before config-entry-aware coordinators do not accept
+            # this keyword. Keep the integration loadable during migration.
+            if "config_entry" not in str(err):
+                raise
+            super().__init__(hass, _LOGGER, **coordinator_kwargs)
         self.entry = entry
         self.client = BullCloudClient()
         self.devices: dict[str, Device] = {}
@@ -66,7 +72,9 @@ class BullCoordinator(DataUpdateCoordinator[dict[str, Device]]):
         Entries created before family selection was introduced retain the old
         all-family behavior until the integration is reconfigured.
         """
-        family_ids = self.entry.data.get(CONF_FAMILY_IDS)
+        family_ids = self.entry.options.get(
+            CONF_FAMILY_IDS, self.entry.data.get(CONF_FAMILY_IDS)
+        )
         if family_ids is None:
             return None
         return [int(family_id) for family_id in family_ids]

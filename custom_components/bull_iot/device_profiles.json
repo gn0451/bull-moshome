@@ -1,0 +1,55 @@
+{
+  "schema_version": 1,
+  "compatibility_profiles": {
+    "switch": [4, 5, 6, 7, 13, 14, 30, 34, 35, 36, 53, 102, 103, 104, 149, 157, 158, 159, 180, 206, 219, 220, 221, 279, 296],
+    "light": [79, 125, 127, 171, 175, 236, 237],
+    "cover": [31, 56, 59, 168, 198, 291],
+    "cloud_charger": [74, 75, 141, 193, 195, 196, 199, 258, 274, 275],
+    "ble_charger": [309]
+  },
+  "read_only_profiles": {
+    "3": {
+      "category": "gateway_socket",
+      "reason": "The observed schema is ambiguous; no load control has been accepted."
+    },
+    "20": {
+      "category": "wireless_scene_panel",
+      "reason": "Battery-powered scene control must be represented as events, not a load switch."
+    },
+    "21": {
+      "category": "wireless_scene_panel",
+      "reason": "Battery-powered scene control must be represented as events, not a load switch."
+    },
+    "69": {
+      "category": "camera",
+      "reason": "Camera alarm properties are not physical load controls."
+    }
+  },
+  "field_evidence": {
+    "4": {
+      "level": "account_inventory_observed",
+      "verified_on": "2026-10-23",
+      "app_version": "5.3.1"
+    },
+    "5": {
+      "level": "account_inventory_observed",
+      "verified_on": "2026-10-23",
+      "app_version": "5.3.1"
+    },
+    "6": {
+      "level": "account_inventory_observed",
+      "verified_on": "2026-10-23",
+      "app_version": "5.3.1"
+    },
+    "7": {
+      "level": "account_inventory_observed",
+      "verified_on": "2026-10-23",
+      "app_version": "5.3.1"
+    },
+    "13": {
+      "level": "account_inventory_observed",
+      "verified_on": "2026-10-23",
+      "app_version": "5.3.1"
+    }
+  }
+}

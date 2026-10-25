@@ -1,7 +1,8 @@
 # 公牛智家（MosHome）Home Assistant 自定义集成 — 安装说明
 
-> 本集成的签名、加密、设备能力和控制边界来自 MosHome 5.3.1 协议分析、
-> 线上 API 验证及真实设备验收。协议细节见 `../PROTOCOL.md`。
+> 核心协议最初依据 MosHome 5.1.13 分析并通过线上 API 校准，随后使用
+> MosHome 5.3.1 和真实设备完成兼容验收。详见 `../PROTOCOL.md` 与
+> `../PROVENANCE.md`。
 
 ## 一、集成能力
 
@@ -20,34 +21,40 @@
 - **充电桩控制**：PID 193/195 调用 App 同款 Thing Service；PID 309 只允许经认证的本地 BLE 控制，不会降级为未经确认的云属性写入。
 - **BLE 前提**：PID 309 需要 HA 主机蓝牙或 ESPHome Bluetooth Proxy 可连接到充电桩；无可用路由时实体保持不可用。
 - **凭证失效**：自动重登；彻底失效时 HA 弹出"重新验证"对话框，输一次密码即可，无需删集成重加。
-- **安全边界**：只有已验证 PID 才创建控制实体。PID 3、20、21、69 只保留只读状态，不会因为存在 `PowerSwitch` 字段而被误建为负载开关。
+- **安全边界**：已有产品档案默认启用；未知但具有标准负载属性的开关生成默认禁用
+  的实验实体。PID 3、20、21、69 及未知电池面板保持只读。
+- **诊断导出**：HA 的“下载诊断”只输出 PID、型号、固件、属性名称和支持等级，
+  不输出账号、设备 ID、昵称、房间或属性值。
 - **并行验收**：首次安装默认关闭 MQTT，避免与现有 `bull` 集成使用相同账号时发生客户端连接冲突。候选版通过验收并准备替换旧版后，再在选项中启用。
 
-## 二、安装（手动方式，适用于任意 HA 版本）
+## 二、安装
 
-1. 把 `bull_iot-ha-1.2.0.zip` 传到 HA 主机，解压：
+### HACS（推荐）
+
+1. HACS → 集成 → 右上角菜单 → 自定义存储库。
+2. 添加 `https://github.com/gn0451/bull-moshome`，类型选择“集成”。
+3. 下载 **Bull MosHome** 并重启 Home Assistant。
+
+### 手动安装
+
+把仓库中的 `custom_components/bull_iot` 复制到 HA 配置目录：
 
    ```bash
-   cd /path/to/ha/config
-   unzip bull_iot-ha-1.2.0.zip
-   # 解压后得到 config/custom_components/bull_iot/ 目录
+   cp -R custom_components/bull_iot /path/to/ha/config/custom_components/
    ```
 
-   或者手动复制：把整个 `bull_iot` 目录放到 HA 配置目录下的
-   `custom_components/bull_iot/`（没有 `custom_components` 目录就新建）。
+1. **重启 Home Assistant**（设置 → 系统 → 重启）。
 
-2. **重启 Home Assistant**（设置 → 系统 → 重启）。
+2. 设置 → 设备与服务 → 添加集成 → 搜索 **Bull MosHome**。
 
-3. 设置 → 设备与服务 → 添加集成 → 搜索 **Bull MosHome**。
-
-4. 输入公牛智家账号密码：
+3. 输入公牛智家账号密码：
 
    - 手机号即用户名（如 `13800138000`）
    - 密码为 App 内设置的登录密码（纯验证码登录的账号需先在 App 内设置密码）
 
-5. 只选择需要接入这套 HA 的家庭。对于拥有大量共享家庭的账号，这一步会显著减少云端请求和无关设备。
+4. 只选择需要接入这套 HA 的家庭。以后可在集成选项中调整。
 
-6. 完成。设备会出现在"设备与服务"页面，开关可直接用于自动化/场景/面板。
+5. 完成。设备会出现在“设备与服务”页面。
 
 > **依赖安装**：集成 manifest 声明了 `requests` / `cryptography` / `paho-mqtt`，
 > HA 首次加载时自动安装（需要 HA 能访问 PyPI）。
@@ -60,6 +67,7 @@
 
 | 选项 | 默认 | 说明 |
 |------|------|------|
+| 接入家庭 | 安装时选择 | 可随时调整，无需删除集成 |
 | 轮询间隔 | 300 秒 | 范围 15–3600；MQTT 为主要更新通道，轮询只做状态校准 |
 | MQTT 实时推送 | 关 | 与旧集成并行时保持关闭；正式切换后启用 |
 
@@ -104,6 +112,9 @@ custom_components/bull_iot/
 ├── ble.py               # FEB3 BLE 会话协议
 ├── ble_charger.py       # HA Bluetooth 持久连接与安全回读
 ├── entity.py            # 实体基类（设备信息/唯一 ID）
+├── diagnostics.py       # 匿名能力诊断导出
+├── device_profiles.py   # 能力分级与安全推断
+├── device_profiles.json # 设备兼容性证据登记
 ├── const.py             # 常量
 ├── manifest.json        # 依赖声明（requests/cryptography/paho-mqtt）
 ├── strings.json         # UI 文案

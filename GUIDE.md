@@ -23,11 +23,12 @@
 - 完整的 HTTP 客户端（登录、家庭/设备列表、属性控制、服务调用）
 - MQTT 实时状态通道（设备被物理操作后云端秒级回推）
 - Home Assistant 自定义集成（开关、灯、窗帘、传感器、选择器、数值与按钮）
-- 经 MosHome 5.3.1、线上网关和真实设备验证的签名、加密与设备控制能力
+- 依据 5.1.13 校准的协议实现，并经 MosHome 5.3.1、线上网关和真实设备验收
 
 **支持设备**（实测出现过的标识符）：G27/G55 系列开关（多通道）、智能插座、
-WiFi 转换器、无线开关/传感器（电池供电）、灯、窗帘和充电桩等。HA 只为
-经过验证的 PID 与能力创建控制实体，未知设备保持连通性或只读状态。
+WiFi 转换器、无线开关/传感器（电池供电）、灯、窗帘和充电桩等。HA 对已验证
+能力默认启用；未知但具有标准负载属性的开关会生成默认禁用的实验实体，电池
+情景面板和高风险设备保持只读。
 
 ---
 
@@ -35,15 +36,11 @@ WiFi 转换器、无线开关/传感器（电池供电）、灯、窗帘和充�
 
 ### 2.1 安装
 
-```bash
-# 在 Home Assistant 配置目录下（含 configuration.yaml 的目录）
-unzip bull_iot-ha-1.2.0.zip        # 得到 custom_components/bull_iot/
-```
-
-没有 zip 也可以直接从本仓库复制：
+推荐在 HACS 中将 `https://github.com/gn0451/bull-moshome` 添加为“集成”类型的
+自定义存储库，然后下载 **Bull MosHome**。也可以手动复制：
 
 ```bash
-cp -r homeassistant/custom_components/bull_iot <HA配置目录>/custom_components/
+cp -r custom_components/bull_iot <HA配置目录>/custom_components/
 ```
 
 然后 **重启 Home Assistant**（设置 → 系统 → 重启）。

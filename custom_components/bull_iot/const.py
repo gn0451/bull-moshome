@@ -1,5 +1,7 @@
 """Constants for the Bull IoT integration."""
 
+from .device_profiles import COMPATIBILITY_PROFILES, READ_ONLY_PROFILES
+
 DOMAIN = "bull_iot"
 
 # 配置流程字段
@@ -32,58 +34,19 @@ MANUFACTURER = "公牛 (BULL)"
 # PowerSwitch is not sufficient evidence that the product is a load switch:
 # wireless scene panels expose similar properties but should be treated as
 # event sources instead of controllable loads.
-SWITCH_PRODUCT_IDS = {
-    4,
-    5,
-    6,
-    7,
-    13,
-    14,
-    30,
-    34,
-    35,
-    36,
-    53,
-    102,
-    103,
-    104,
-    149,
-    157,
-    158,
-    159,
-    180,
-    206,
-    219,
-    220,
-    221,
-    279,
-    296,
-}
+SWITCH_PRODUCT_IDS = COMPATIBILITY_PROFILES["switch"]
 
-LIGHT_PRODUCT_IDS = {79, 125, 127, 171, 175, 236, 237}
-COVER_PRODUCT_IDS = {31, 56, 59, 168, 198, 291}
+LIGHT_PRODUCT_IDS = COMPATIBILITY_PROFILES["light"]
+COVER_PRODUCT_IDS = COMPATIBILITY_PROFILES["cover"]
 
 # These products stay visible through connectivity/read-only entities. They
 # must not gain a control entity merely because the cloud schema contains a
 # PowerSwitch-like field.
-READ_ONLY_PRODUCT_IDS = {3, 20, 21, 69}
+READ_ONLY_PRODUCT_IDS = frozenset(READ_ONLY_PROFILES)
 
-THING_SERVICE_CHARGER_PRODUCT_IDS = {193, 195}
-BLE_CHARGER_PRODUCT_IDS = {309}
-CHARGER_PRODUCT_IDS = (
-    {
-        74,
-        75,
-        141,
-        196,
-        199,
-        258,
-        274,
-        275,
-    }
-    | THING_SERVICE_CHARGER_PRODUCT_IDS
-    | BLE_CHARGER_PRODUCT_IDS
-)
+THING_SERVICE_CHARGER_PRODUCT_IDS = frozenset({193, 195})
+BLE_CHARGER_PRODUCT_IDS = COMPATIBILITY_PROFILES["ble_charger"]
+CHARGER_PRODUCT_IDS = COMPATIBILITY_PROFILES["cloud_charger"] | BLE_CHARGER_PRODUCT_IDS
 
 BUTTON_ENTITY_MAPPING = {
     258: (

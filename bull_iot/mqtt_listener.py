@@ -85,7 +85,9 @@ class BullMqttListener:
             return
 
         if msg.topic.endswith("/account/bind_reply"):
-            print(f"[MQTT] 账号绑定应答: code={db.get('code')} message={db.get('message')}")
+            print(
+                f"[MQTT] 账号绑定应答: code={db.get('code')} message={db.get('message')}"
+            )
             self.bound.set()
             return
 

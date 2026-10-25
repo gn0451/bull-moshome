@@ -20,10 +20,10 @@ import base64
 import hashlib
 import hmac
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from urllib.parse import parse_qsl
 
-# MosHome 5.1.13 客户端内置的应用凭证（非用户凭证，所有客户端相同）
+# MosHome 5.1.13 客户端内置的应用凭证；已验证 5.3.1 云端兼容性。
 APP_KEY = "2037288812025"
 APP_SECRET = b"XxNjYxonJBt6DskF368fdjLEQZC9ziMeLOZPf"
 APP_VERSION = "5.1.13"
@@ -36,7 +36,7 @@ ACCEPT = "application/json; charset=utf-8"
 
 def _http_date() -> str:
     """RFC 1123 格式的 UTC 时间，如 'Tue, 21 Nov 2023 10:00:00 GMT'。"""
-    return datetime.now(timezone.utc).strftime("%a, %d %b %Y %H:%M:%S GMT")
+    return datetime.now(UTC).strftime("%a, %d %b %Y %H:%M:%S GMT")
 
 
 def signing_query(content_type: str, body: str, query: dict | None) -> dict | None:
@@ -76,14 +76,16 @@ def build_headers(
         "x-ca-key": APP_KEY,
         "x-ca-nonce": str(uuid.uuid4()),
         "x-ca-signature-method": "HmacSHA256",
-        "x-ca-timestamp": str(int(datetime.now(timezone.utc).timestamp() * 1000)),
+        "x-ca-timestamp": str(int(datetime.now(UTC).timestamp() * 1000)),
     }
     canonical_headers = "".join(f"{k}:{v}\n" for k, v in sorted(x_ca_headers.items()))
 
     # 表单请求（登录）不计算 Content-MD5，其余有 body 的请求都计算
     content_md5 = ""
     if body and not query:
-        content_md5 = base64.b64encode(hashlib.md5(body.encode("utf-8")).digest()).decode()
+        content_md5 = base64.b64encode(
+            hashlib.md5(body.encode("utf-8")).digest()
+        ).decode()
 
     string_to_sign = (
         f"{method}\n{ACCEPT}\n{content_md5}\n{content_type}\n{date}\n"
