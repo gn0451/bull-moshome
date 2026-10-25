@@ -25,16 +25,11 @@
 > 本项目是非官方社区项目，与公牛集团及 MosHome 官方无隶属或背书关系。
 > MosHome 名称与标识归其权利人所有。
 
-<!--
-截图位：建议补两张，转化率收益比任何代码优化都大。
-  1. docs/images/ha-devices.png   —— 设置 → 设备与服务 → Bull MosHome 的设备列表
-  2. docs/images/ha-entities.png  —— 某台多路开关的实体列表（体现通道命名）
-放好后取消下面注释。
 <p align="center">
-  <img src="docs/images/ha-devices.png" alt="设备列表" width="49%">
-  <img src="docs/images/ha-entities.png" alt="实体列表" width="49%">
+  <img src="docs/images/ha-devices.png" alt="Bull MosHome 设备列表" width="100%">
 </p>
--->
+
+<!-- 实体列表截图待补：docs/images/ha-entities.png（某台多路开关的实体列表，体现通道命名） -->
 
 ## 为什么选这个
 
