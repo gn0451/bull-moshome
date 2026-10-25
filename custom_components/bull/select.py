@@ -8,7 +8,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .const import BLE_CHARGER_PRODUCT_IDS
+from .const import BLE_CHARGER_PRODUCT_IDS, DOMAIN
 from .coordinator import BullCoordinator
 from .digital_display_socket import (
     DIGITAL_DISPLAY_SOCKET_PRODUCT_IDS,
@@ -112,7 +112,7 @@ class BullBleChargeModeSelect(BullDeviceEntity, SelectEntity):
 async def async_setup_entry(
     hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback
 ) -> None:
-    coordinator: BullCoordinator = hass.data["bull_iot"][entry.entry_id]
+    coordinator: BullCoordinator = hass.data[DOMAIN][entry.entry_id]
     entities: list[SelectEntity] = []
     for device in coordinator.data.values():
         if device.product_id in DIGITAL_DISPLAY_SOCKET_PRODUCT_IDS:

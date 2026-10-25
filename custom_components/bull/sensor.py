@@ -11,7 +11,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .const import BLE_CHARGER_PRODUCT_IDS
+from .const import BLE_CHARGER_PRODUCT_IDS, DOMAIN
 from .coordinator import BullCoordinator
 from .digital_display_socket import (
     DIGITAL_DISPLAY_SOCKET_PORT_NAMES,
@@ -232,7 +232,7 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up Bull sensors from a config entry."""
-    coordinator: BullCoordinator = hass.data["bull_iot"][entry.entry_id]
+    coordinator: BullCoordinator = hass.data[DOMAIN][entry.entry_id]
     entities: list[BullSensorEntity] = []
 
     for device in coordinator.data.values():

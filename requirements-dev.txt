@@ -1,0 +1,6 @@
+pytest
+ruff
+homeassistant
+requests
+cryptography
+paho-mqtt

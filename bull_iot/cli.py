@@ -172,7 +172,9 @@ def main(argv=None) -> int:
     p_watch.add_argument("--wildcard", action="store_true", help="订阅 # 话题发现")
     p_watch.set_defaults(func=cmd_watch)
 
-    sub.add_parser("probe", help="用假凭证探测网关签名是否被接受").set_defaults(func=cmd_probe)
+    sub.add_parser("probe", help="用假凭证探测网关签名是否被接受").set_defaults(
+        func=cmd_probe
+    )
 
     args = parser.parse_args(argv)
     try:

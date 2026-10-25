@@ -75,8 +75,8 @@ class BullMqttListener:
         # 先 disconnect 再停网络循环，确保断开报文能发出
         try:
             self._client.disconnect()
-        except Exception:  # noqa: BLE001  # 未连接时 disconnect 会抛异常，忽略
-            pass
+        except RuntimeError:  # 未连接时 disconnect 会抛异常
+            _LOGGER.debug("MQTT disconnect ignored because the client is not connected")
         self._client.loop_stop()
 
     # ------------------------------------------------------------------ #
@@ -101,7 +101,7 @@ class BullMqttListener:
     def _on_message(self, client, userdata, msg):
         try:
             self._dispatch(client, userdata, msg)
-        except Exception:  # noqa: BLE001  # 回调异常不能杀掉 paho 网络线程
+        except Exception:  # 回调异常不能杀掉 paho 网络线程
             _LOGGER.exception("处理 MQTT 报文失败: topic=%s", msg.topic)
 
     def _dispatch(self, client, userdata, msg):

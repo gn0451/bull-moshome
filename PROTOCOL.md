@@ -1,8 +1,9 @@
 # 公牛智家云（MosHome）协议分析文档
 
-> 本文档依据 MosHome 5.3.1 与公牛智家云（`api.iotbull.com`）协议分析整理，
-> 关键结论已于 2026-10-25 通过线上网关和真实设备验证（见文末「验证记录」）。
-> 配套实现位于 `bull_iot/` 与 `homeassistant/custom_components/bull_iot/`。
+> 核心常量与请求格式最初依据 MosHome 5.1.13 分析整理，并通过线上网关校准；
+> 2026-10-25 又使用 MosHome 5.3.1、线上 API 和真实设备完成兼容验收。
+> 配套实现位于 `bull_iot/` 与 `custom_components/bull_iot/`，证据边界见
+> `PROVENANCE.md`。
 
 ---
 
@@ -23,7 +24,8 @@
    先过滤 `api.iotbull.com` 域名，观察请求路径规律（`/mos/...`、`/v1/...`、`/v2/...`）。
 2. **找客户端**：App 为 React Native 壳 + 原生网络层，签名逻辑在原生层。
    对 APK 反编译（jadx）搜索常量 `x-ca-key` / `APP_PWD` / `paascloudclientuic` 定位。
-3. **提取应用凭证**：从代码中提取 AppKey、AppSecret、client_id/secret、登录 AES Key——
+3. **提取应用凭证**：从 5.1.13 客户端代码中提取 AppKey、AppSecret、
+   client_id/secret、登录 AES Key——
    这些是**客户端内置的应用级凭证**，所有 App 用户相同，不是用户隐私数据。
 4. **复现签名**：按阿里云网关签名规范实现，打登录接口。
 5. **用网关报错校准**（关键技巧）：签名错误时，网关会在响应头
@@ -40,9 +42,12 @@
 | AppSecret（HMAC 密钥） | `XxNjYxonJBt6DskF368fdjLEQZC9ziMeLOZPf` |
 | client_id | `paascloudclientuic` |
 | client_secret | `paascloudClientSecret` |
-| App 版本 | `5.1.13` |
+| 已验证请求版本 | `5.1.13` |
 | 登录 AES Key（Base64） | `cjJ2R1dCQTNRQVJOblJsUg==` |
 | 密码盐 | `GONGNIU` |
+
+> 5.3.1 APK 已确认版本身份及 client_id/client_secret，但当前没有足够静态证据
+> 宣称上表其余常量均从 5.3.1 重新提取。5.3.1 在本项目中表示兼容验收版本。
 
 ## 4. 请求签名（x-ca-* HMAC-SHA256）
 

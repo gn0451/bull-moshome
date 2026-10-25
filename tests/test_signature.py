@@ -13,10 +13,10 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-import requests  # noqa: E402
+import requests
 
-from bull_iot.client import AuthenticationError, BullCloudClient  # noqa: E402
-from bull_iot.signing import build_headers  # noqa: E402
+from bull_iot.client import AuthenticationError, BullCloudClient
+from bull_iot.signing import build_headers
 
 API = "https://api.iotbull.com"
 passed = failed = 0
@@ -39,7 +39,11 @@ def test_login_endpoint() -> None:
         client.login("00000000000", "not-a-real-password")
         check("登录接口返回业务错误", False, "假凭证竟然登录成功")
     except AuthenticationError as err:
-        check("登录接口返回业务错误", "901006" in str(err) or "901015" in str(err), str(err))
+        check(
+            "登录接口返回业务错误",
+            "901006" in str(err) or "901015" in str(err),
+            str(err),
+        )
     except Exception as err:  # noqa: BLE001
         check("登录接口返回业务错误", False, repr(err))
     finally:
@@ -51,7 +55,11 @@ def probe_json_endpoint(method: str, path: str, body: str = "") -> None:
     headers = build_headers(method, path, "application/json", body)
     headers["Authorization"] = "Bearer fake-token"
     resp = requests.request(
-        method, API + path, headers=headers, data=body.encode() if body else None, timeout=10
+        method,
+        API + path,
+        headers=headers,
+        data=body.encode() if body else None,
+        timeout=10,
     )
     err = resp.headers.get("X-Ca-Error-Message", "")
     is_sig_error = "Invalid Signature" in err

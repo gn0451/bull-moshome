@@ -10,8 +10,9 @@ from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .const import BLE_CHARGER_PRODUCT_IDS, CHARGER_PRODUCT_IDS, SWITCH_PRODUCT_IDS
+from .const import BLE_CHARGER_PRODUCT_IDS, CHARGER_PRODUCT_IDS, DOMAIN
 from .coordinator import BullCoordinator
+from .device_profiles import SupportTier, infer_switch_tier
 from .digital_display_socket import (
     DIGITAL_DISPLAY_SOCKET_PORT_NAMES,
     DIGITAL_DISPLAY_SOCKET_PORTS,
@@ -45,7 +46,7 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up Bull switches from a config entry."""
-    coordinator: BullCoordinator = hass.data["bull_iot"][entry.entry_id]
+    coordinator: BullCoordinator = hass.data[DOMAIN][entry.entry_id]
     entities: list[BullSwitchEntity] = []
 
     for device in coordinator.data.values():
@@ -88,7 +89,11 @@ async def async_setup_entry(
             ):
                 entities.append(BullChargerSwitch(coordinator, device.iot_id))
             continue
-        if device.product_id not in SWITCH_PRODUCT_IDS:
+        identifiers = _collect_switch_identifiers(device.properties)
+        support_tier = infer_switch_tier(
+            device.product_id, device.properties, identifiers
+        )
+        if support_tier in (None, SupportTier.READ_ONLY):
             continue
         # 收集通道名: __name__PowerSwitch_N -> "客厅吊灯"
         channel_names = {
@@ -96,10 +101,16 @@ async def async_setup_entry(
             for key, value in device.properties.items()
             if key.startswith("__name__") and value
         }
-        for identifier in _collect_switch_identifiers(device.properties):
+        for identifier in identifiers:
             name = channel_names.get(identifier)
             entities.append(
-                BullSwitchEntity(coordinator, device.iot_id, identifier, name)
+                BullSwitchEntity(
+                    coordinator,
+                    device.iot_id,
+                    identifier,
+                    name,
+                    support_tier=support_tier,
+                )
             )
 
     async_add_entities(entities)
@@ -114,8 +125,23 @@ class BullSwitchEntity(BullDeviceEntity, SwitchEntity):
         iot_id: str,
         identifier: str,
         name: str | None,
+        *,
+        support_tier: SupportTier = SupportTier.PROFILED,
     ) -> None:
         super().__init__(coordinator, iot_id, identifier, name, "switch")
+        self._support_tier = support_tier
+        self._attr_entity_registry_enabled_default = (
+            support_tier is not SupportTier.INFERRED_SAFE
+        )
+
+    @property
+    def extra_state_attributes(self) -> dict[str, str | int]:
+        """Expose why this entity exists without leaking device identifiers."""
+        device = self._device
+        return {
+            "support_tier": self._support_tier.value,
+            "product_id": device.product_id if device else -1,
+        }
 
     @property
     def is_on(self) -> bool:

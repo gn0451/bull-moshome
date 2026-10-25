@@ -5,7 +5,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .const import BUTTON_ENTITY_MAPPING
+from .const import BUTTON_ENTITY_MAPPING, DOMAIN
 from .coordinator import BullCoordinator
 from .entity import BullDeviceEntity
 
@@ -36,7 +36,7 @@ class BullMappedButton(BullDeviceEntity, ButtonEntity):
 async def async_setup_entry(
     hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback
 ) -> None:
-    coordinator: BullCoordinator = hass.data["bull_iot"][entry.entry_id]
+    coordinator: BullCoordinator = hass.data[DOMAIN][entry.entry_id]
     async_add_entities(
         [
             BullMappedButton(coordinator, device.iot_id, spec)

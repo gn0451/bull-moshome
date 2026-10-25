@@ -13,7 +13,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .const import COVER_PRODUCT_IDS
+from .const import COVER_PRODUCT_IDS, DOMAIN
 from .coordinator import BullCoordinator
 from .entity import BullDeviceEntity
 
@@ -45,7 +45,7 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up verified cover entities."""
-    coordinator: BullCoordinator = hass.data["bull_iot"][entry.entry_id]
+    coordinator: BullCoordinator = hass.data[DOMAIN][entry.entry_id]
     entities = []
     for device in coordinator.data.values():
         if device.product_id not in COVER_PRODUCT_IDS:

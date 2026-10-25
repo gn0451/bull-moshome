@@ -1,11 +1,20 @@
+<p align="center">
+  <img src="brand/icon@2x.png" alt="MosHome" width="160">
+</p>
+
 # bull-moshome — 公牛智家云 Python 客户端 + Home Assistant 集成
 
 面向公牛智家云（MosHome / `api.iotbull.com`）的 Python 客户端、Home Assistant
-集成与协议文档。核心签名、加密、设备能力和控制边界来自 MosHome 5.3.1
-协议分析、线上 API 验证及真实设备验收，仅依赖 `requests`、`cryptography`、
-`paho-mqtt`。
+集成与协议文档。核心签名最初依据 MosHome 5.1.13 分析并经线上 API 校准，
+随后使用 MosHome 5.3.1 和真实设备完成兼容验收。详细证据边界见
+[PROVENANCE.md](PROVENANCE.md)。
 
 协议细节见 [PROTOCOL.md](PROTOCOL.md)（含协议分析过程、签名算法、全部端点）。
+设备支持等级和未知设备贡献流程见 [COMPATIBILITY.md](COMPATIBILITY.md)，版本变化见
+[CHANGELOG.md](CHANGELOG.md)。
+
+> 本项目是非官方社区项目，与公牛集团及 MosHome 官方无隶属或背书关系。
+> MosHome 名称与标识归其权利人所有。
 
 > **完整使用指南**（HA 集成安装、自动化示例、Python/CLI 用法、FAQ）见 [GUIDE.md](GUIDE.md)。
 
@@ -17,7 +26,9 @@
 - 设备控制（`set_property` / `set_properties` / `invoke_thing_service`）
 - MQTT 实时监听设备状态回推（物理按键操作后云端推送）
 - Home Assistant 配置时选择家庭，避免遍历账号下全部家庭
-- 已验证 PID 白名单，避免把无线情景面板误识别为负载开关
+- 能力优先发现：已有产品档案默认启用，未知负载型开关默认禁用等待用户确认
+- 风险分级：电池情景面板与明确只读产品不会生成负载控制实体
+- 匿名诊断导出：只包含协议标识符与支持等级，不包含设备 ID、昵称和属性值
 - PID 296 数显桌面充电站：总电源、六路 USB、熄屏、功率模式、亮度与逐口遥测
 - 充电桩：普通云属性、PID 193/195 Thing Service、PID 258 激活按钮和 PID 309 本地 BLE
 
@@ -79,24 +90,31 @@ bull_iot/
   cli.py           # 命令行入口
 tests/             # 签名验证测试（假凭证探活，无需账号）
 examples/          # 示例脚本
-homeassistant/     # Home Assistant 自定义集成（bull_iot）
-  custom_components/bull_iot/   # 自包含组件（含客户端四模块副本）
+custom_components/bull/     # HACS/HA 自定义集成
+  device_profiles.json          # 版本化设备能力与实测证据登记
+homeassistant/
   INSTALL_HA.md                 # 安装说明
-  bull_iot-ha-1.2.0.zip         # 一键安装包
-  tests/test_e2e.py             # 集成端到端 mock 测试（需安装 homeassistant）
+  tests/test_e2e.py             # 集成端到端 mock 测试
 PROTOCOL.md        # 协议分析文档
+PROVENANCE.md      # 来源、验证和许可证边界
 ```
 
 ## Home Assistant 集成
 
-`homeassistant/` 目录是本客户端对应的 **Home Assistant 自定义集成**，
-保留 Python 客户端架构，并把真实设备验证过的能力整理为 HA 的开关、灯、
-窗帘、传感器、选择器、数值、按钮和在线状态实体：
+仓库根目录的 `custom_components/bull/` 是标准 HACS 自定义集成。
+它沿用既有 `bull` 域名、配置字段兼容层及实体唯一 ID，可从现有 Bull IoT
+安装原位升级，保留实体 ID、自动化和外部白名单。
+
+### HACS 安装
+
+1. HACS → 集成 → 右上角菜单 → 自定义存储库。
+2. 添加 `https://github.com/gn0451/bull-moshome`，类型选择“集成”。
+3. 下载 **Bull MosHome**，重启 Home Assistant 后添加集成。
+
+也可以手动复制：
 
 ```bash
-# 解压即用（在 HA 配置目录下）
-unzip homeassistant/bull_iot-ha-1.2.0.zip
-# -> custom_components/bull_iot/，然后重启 HA，UI 搜索 "Bull MosHome" 添加
+cp -R custom_components/bull /path/to/ha/config/custom_components/
 ```
 
 详见 [homeassistant/INSTALL_HA.md](homeassistant/INSTALL_HA.md)。
@@ -104,8 +122,8 @@ unzip homeassistant/bull_iot-ha-1.2.0.zip
 只读保护、充电专用功能、BLE 协议基础与 MQTT 回推：
 
 ```bash
-pip install homeassistant==2024.3.3   # 或任意 >=2024.3 版本
-python homeassistant/tests/test_e2e.py
+uv run --python 3.13 --with pytest --with homeassistant \
+  python homeassistant/tests/test_e2e.py
 ```
 
 ## 实测状态（2026-10-25）
@@ -131,5 +149,6 @@ MIT，见 [LICENSE](LICENSE)。
 
 ## 免责声明
 
-本项目仅用于个人设备接入与学习研究。通过云端接口控制大功率设备（如充电桩、
+本项目是非官方社区项目，与公牛集团及 MosHome 官方无隶属或背书关系；MosHome
+名称与标识归其权利人所有。本项目仅用于个人设备接入与学习研究。通过云端接口控制大功率设备（如充电桩、
 加热器）存在安全风险，请谨慎设置自动化。使用本代码产生的一切后果由使用者自行承担。

@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>BULL MOSHOME — 公牛智家云客户端 · 使用指南</title>
+<link rel="icon" type="image/png" href="../brand/icon.png">
 <style>
   :root {
     --bg: #050810;
@@ -58,10 +59,12 @@
   #progress { position: fixed; top: 0; left: 0; height: 2px; width: 0; z-index: 100;
     background: linear-gradient(90deg, var(--cyan), var(--violet)); box-shadow: 0 0 12px var(--cyan); }
 
-  .wrap { max-width: 1080px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 2; }
+  .wrap { width: 100%; max-width: 1080px; min-width: 0; margin: 0 auto; padding: 0 24px; position: relative; z-index: 2; }
 
   /* ============ HERO ============ */
   header { padding: 96px 0 64px; text-align: left; }
+  .hero-brand { display: flex; align-items: center; gap: 22px; margin-bottom: 24px; }
+  .hero-logo { width: 108px; height: 108px; border-radius: 24px; box-shadow: 0 18px 44px rgba(255, 145, 20, .2); }
   .badge-row { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 28px; }
   .badge {
     font-family: var(--mono); font-size: 12px; letter-spacing: 0.08em;
@@ -203,6 +206,9 @@
 
   @media (max-width: 640px) {
     header { padding: 64px 0 48px; }
+    .hero-brand { align-items: flex-start; gap: 16px; }
+    .hero-logo { width: 76px; height: 76px; border-radius: 18px; }
+    table { display: block; max-width: 100%; overflow-x: auto; }
     section { padding: 52px 0 4px; }
     .step { flex-direction: row; }
   }
@@ -219,17 +225,21 @@
       <span class="badge"><b>MQTT</b> · REALTIME PUSH</span>
       <span class="badge"><b>LICENSE</b> · MIT</span>
     </div>
-    <h1>BULL<br>MOSHOME</h1>
+    <div class="hero-brand">
+      <img class="hero-logo" src="../brand/icon@2x.png" alt="MosHome">
+      <h1>BULL<br>MOSHOME</h1>
+    </div>
     <div class="subtitle"><span id="typed"></span><span class="cursor"></span></div>
     <p class="lede">
       面向公牛智家云（MosHome / <code>api.iotbull.com</code>）的完整接入方案：
       HTTP 客户端 + MQTT 实时通道 + Home Assistant 自定义集成。
-      核心签名、加密和设备能力已经 MosHome 5.3.1、线上网关及真实设备验证。
+      核心协议最初依据 MosHome 5.1.13 分析并经线上网关校准，随后使用
+      MosHome 5.3.1 和真实设备完成兼容验收。
     </p>
     <div class="hero-stats">
       <div class="stat"><div class="num">448</div><div class="lbl">台真实设备实测拉取</div></div>
       <div class="stat"><div class="num">1117</div><div class="lbl">条跨家庭设备记录</div></div>
-      <div class="stat"><div class="num">24/24</div><div class="lbl">集成端到端测试通过</div></div>
+      <div class="stat"><div class="num">31/31</div><div class="lbl">集成端到端测试通过</div></div>
       <div class="stat"><div class="num">4/4</div><div class="lbl">线上签名探活通过</div></div>
     </div>
   </div>
@@ -292,14 +302,14 @@
 <section id="ha">
   <div class="kicker">METHOD 01 · RECOMMENDED</div>
   <h2 class="glow">Home Assistant 自定义集成</h2>
-  <p class="sec-lede">安装包 <code>bull_iot-ha-1.0.0.zip</code>（22KB），或直接从仓库复制 <code>homeassistant/custom_components/bull_iot/</code>。</p>
+  <p class="sec-lede">支持 HACS 自定义存储库安装，也可直接复制仓库根目录的 <code>custom_components/bull/</code>。</p>
 
   <div class="steps">
     <div class="step reveal">
       <div class="no"></div>
       <div>
-        <h4>解压到 HA 配置目录</h4>
-        <p>在含 <code>configuration.yaml</code> 的目录下执行 <code>unzip bull_iot-ha-1.0.0.zip</code>，得到 <code>custom_components/bull_iot/</code>。</p>
+        <h4>通过 HACS 安装</h4>
+        <p>把本仓库添加为“集成”类型的自定义存储库，下载 <code>Bull MosHome</code>。</p>
       </div>
     </div>
     <div class="step reveal">
@@ -313,7 +323,7 @@
       <div class="no"></div>
       <div>
         <h4>添加集成，输入账号密码</h4>
-        <p>设置 → 设备与服务 → 添加集成 → 搜索 <code>Bull IoT</code>。用户名为手机号；密码为 App 内设置的登录密码。</p>
+        <p>设置 → 设备与服务 → 添加集成 → 搜索 <code>Bull MosHome</code>。用户名为手机号；密码为 App 内设置的登录密码。</p>
       </div>
     </div>
   </div>
@@ -505,7 +515,7 @@
     <div class="foot-grid">
       <div>
         <div style="font-family:var(--mono); color:var(--cyan); font-size:15px; letter-spacing:.1em;">BULL MOSHOME</div>
-        <p class="disclaimer">本项目仅用于个人设备接入与学习研究。通过云端接口控制大功率设备存在安全风险，请谨慎设置自动化。使用本代码产生的一切后果由使用者自行承担。</p>
+        <p class="disclaimer">本项目是非官方社区项目，与公牛集团及 MosHome 官方无隶属或背书关系；MosHome 名称与标识归其权利人所有。本项目仅用于个人设备接入与学习研究。通过云端接口控制大功率设备存在安全风险，请谨慎设置自动化。</p>
         <div class="foot-qr">
           <img src="wechat-qr.png" alt="微信二维码（技术交流）">
           <div class="qr-note"><b>WECHAT</b><br>技术交流 / 问题反馈<br>加好友请注明 <b>BULL</b></div>

@@ -1,8 +1,8 @@
-"""bull_iot HA 集成端到端 mock 测试。
+"""bull HA 集成端到端 mock 测试。
 
 不访问真实网络：mock BullCloudClient 的全部出网方法，验证
 config flow（user/reauth/reauth_confirm）、coordinator（首刷/周期刷新/
-MQTT 回推/属性应用）、三个平台实体的创建与控制路径。
+MQTT 回推/属性应用）、能力分级、八个平台实体与匿名诊断。
 """
 
 import asyncio
@@ -11,26 +11,31 @@ import types
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
-# 组件目录 = <repo>/homeassistant/custom_components（相对本测试文件定位）
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "custom_components"))
+# 组件目录 = <repo>/custom_components（相对本测试文件定位）
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "custom_components"))
 
-import bull_iot.binary_sensor as bs_mod
-import bull_iot.ble as ble_mod
-import bull_iot.ble_charger as ble_charger_mod
-import bull_iot.button as button_mod
-import bull_iot.config_flow as cf_mod
-import bull_iot.coordinator as coord_mod
-import bull_iot.cover as cover_mod
-import bull_iot.light as light_mod
-import bull_iot.number as number_mod
-import bull_iot.select as select_mod
-import bull_iot.sensor as sensor_mod
-import bull_iot.switch as switch_mod
-from bull_iot.const import CONF_FAMILY_IDS, CONF_MQTT_ENABLED, DOMAIN
+import bull.binary_sensor as bs_mod
+import bull.ble as ble_mod
+import bull.ble_charger as ble_charger_mod
+import bull.button as button_mod
+import bull.config_flow as cf_mod
+import bull.coordinator as coord_mod
+import bull.cover as cover_mod
+import bull.diagnostics as diagnostics_mod
+import bull.light as light_mod
+import bull.number as number_mod
+import bull.select as select_mod
+import bull.sensor as sensor_mod
+import bull.switch as switch_mod
+from bull.client import AuthenticationError, BullCloudError, Device
+from bull.const import (
+    CONF_FAMILY_IDS,
+    CONF_MQTT_ENABLED,
+    DOMAIN,
+    LEGACY_CONF_FAMILY_IDS,
+)
 from homeassistant.exceptions import ConfigEntryAuthFailed
 from homeassistant.helpers.update_coordinator import UpdateFailed
-
-from bull_iot.client import AuthenticationError, BullCloudError, Device
 
 PASSED = []
 FAILED = []
@@ -82,6 +87,11 @@ class FakeEntry:
         self.options = options or {}
         self.entry_id = "test_entry_1"
         self.title = "13800138000"
+        self.unique_id = "fake_openid"
+        self._unload_callbacks = []
+
+    def async_on_unload(self, callback):
+        self._unload_callbacks.append(callback)
 
 
 def make_fake_device():
@@ -232,6 +242,30 @@ async def test_config_flow_reauth_flow():
     assert call_kwargs["data"]["username"] == "new_user", call_kwargs
 
 
+async def test_config_flow_reauth_rejects_wrong_account():
+    """reauth must not replace an entry with another MosHome account."""
+    hass = FakeHass()
+    entry = FakeEntry()
+    hass.config_entries.async_get_entry = MagicMock(return_value=entry)
+    hass.config_entries.async_get_known_entry = MagicMock(return_value=entry)
+    flow = cf_mod.BullConfigFlow()
+    flow.hass = hass
+    flow.handler = DOMAIN
+    flow.flow_id = "flow-wrong-account"
+    flow.context = {"source": "reauth", "entry_id": entry.entry_id}
+
+    async def wrong_account(hass_, username, password):
+        return "another_openid", []
+
+    with patch.object(cf_mod, "_validate_credentials", new=wrong_account):
+        result = await flow.async_step_reauth_confirm(
+            {"username": "other", "password": "valid"}
+        )
+    assert result["type"] == "form", result
+    assert result["errors"] == {"base": "wrong_account"}, result
+    hass.config_entries.async_update_entry.assert_not_called()
+
+
 async def test_coordinator_first_refresh():
     """coordinator 首刷（已有 token）：直接拉设备，不重复登录。"""
     hass = FakeHass()
@@ -363,7 +397,7 @@ async def test_switch_platform():
     ent = next(e for e in added if e._identifier == "PowerSwitch_1")
     assert ent.name == "进门射灯", ent.name
     assert ent.is_on is True
-    assert ent.unique_id == f"{device.iot_id}_switch_PowerSwitch_1"
+    assert ent.unique_id == f"{device.iot_id}.PowerSwitch_1"
     info = ent.device_info
     assert info["identifiers"] == {(DOMAIN, device.iot_id)}
     assert info["manufacturer"] == "公牛 (BULL)"
@@ -388,6 +422,34 @@ async def test_switch_read_only_products():
             hass, entry, lambda entities, target=added: target.extend(entities)
         )
         assert added == [], f"PID {product_id} 不应生成控制开关"
+
+
+async def test_switch_unknown_capability_is_discovered_disabled():
+    """An unknown load-like schema is discoverable but disabled by default."""
+    hass = FakeHass()
+    entry = FakeEntry()
+    device = make_fake_device()
+    device.product_id = 9999
+    device.properties = {"PowerSwitch_1": 0, "RealTimePower": 0}
+    await make_coordinator(hass, entry, device)
+    added = []
+    await switch_mod.async_setup_entry(hass, entry, lambda values: added.extend(values))
+    assert len(added) == 1
+    assert added[0].entity_registry_enabled_default is False
+    assert added[0].extra_state_attributes["support_tier"] == "inferred-safe"
+
+
+async def test_switch_unknown_battery_panel_stays_read_only():
+    """An unprofiled battery panel must not become a load control."""
+    hass = FakeHass()
+    entry = FakeEntry()
+    device = make_fake_device()
+    device.product_id = 9998
+    device.properties = {"PowerSwitch_1": 0, "BatteryStatus": 80}
+    await make_coordinator(hass, entry, device)
+    added = []
+    await switch_mod.async_setup_entry(hass, entry, lambda values: added.extend(values))
+    assert added == []
 
 
 async def test_light_platform():
@@ -686,13 +748,14 @@ async def test_binary_sensor_platform():
     added = []
     await bs_mod.async_setup_entry(hass, entry, lambda ents: added.extend(ents))
     assert len(added) == 1
+    assert added[0].unique_id == f"{device.iot_id}.connectivity"
     assert added[0].is_on is True
     device.status = "OFFLINE"
     assert added[0].is_on is False
 
 
 async def test_options_flow():
-    """选项流：轮询间隔 + MQTT 开关。"""
+    """选项流：家庭范围 + 轮询间隔 + MQTT 开关。"""
     flow = cf_mod.BullConfigFlow()
     flow.hass = FakeHass()
     flow.handler = DOMAIN
@@ -702,11 +765,76 @@ async def test_options_flow():
     options_flow = flow.async_get_options_flow(FakeEntry())
     options_flow._config_entry = FakeEntry()
     result = await options_flow.async_step_init(
-        {"scan_interval": 30, "mqtt_enabled": False}
+        {
+            CONF_FAMILY_IDS: ["1001"],
+            "scan_interval": 30,
+            "mqtt_enabled": False,
+        }
     )
     assert result["type"] == "create_entry", result
     assert result["data"]["scan_interval"] == 30
     assert result["data"]["mqtt_enabled"] is False
+    assert result["data"][CONF_FAMILY_IDS] == [1001]
+
+
+async def test_options_flow_loads_current_families():
+    """Opening options refreshes family labels while preserving the selection."""
+    flow = cf_mod.BullConfigFlow()
+    flow.hass = FakeHass()
+    entry = FakeEntry()
+    flow.hass.config_entries.async_get_known_entry = MagicMock(return_value=entry)
+    options_flow = flow.async_get_options_flow(entry)
+    options_flow.hass = flow.hass
+    options_flow.handler = entry.entry_id
+
+    async def load_families(hass, username, password):
+        return "fake_openid", [
+            {"familyId": 1001, "familyName": "测试家庭", "deviceCount": 3}
+        ]
+
+    with patch.object(cf_mod, "_validate_credentials", new=load_families):
+        result = await options_flow.async_step_init()
+    assert result["type"] == "form", result
+    assert result["errors"] == {}, result
+
+
+async def test_coordinator_options_override_family_scope():
+    """A changed family selection takes effect without recreating the entry."""
+    entry = FakeEntry(options={CONF_FAMILY_IDS: [2002]})
+    with patch.object(coord_mod, "BullCloudClient", return_value=make_fake_client()):
+        coordinator = coord_mod.BullCoordinator(FakeHass(), entry)
+    assert coordinator.family_ids == [2002]
+
+
+async def test_coordinator_accepts_legacy_family_scope():
+    """Entries created by the established bull integration upgrade in place."""
+    entry = FakeEntry(
+        data={
+            "username": "13800138000",
+            "password": "secret",
+            LEGACY_CONF_FAMILY_IDS: [3003],
+        }
+    )
+    with patch.object(coord_mod, "BullCloudClient", return_value=make_fake_client()):
+        coordinator = coord_mod.BullCoordinator(FakeHass(), entry)
+    assert DOMAIN == "bull"
+    assert coordinator.family_ids == [3003]
+
+
+async def test_anonymized_diagnostics():
+    """Diagnostics expose schemas and support levels, never IDs or values."""
+    hass = FakeHass()
+    entry = FakeEntry()
+    device = make_fake_device()
+    coordinator = await make_coordinator(hass, entry, device)
+    coordinator.devices = {device.iot_id: device}
+    report = await diagnostics_mod.async_get_config_entry_diagnostics(hass, entry)
+    serialized = repr(report)
+    assert device.iot_id not in serialized
+    assert entry.data["username"] not in serialized
+    assert "1001" not in serialized
+    assert "PowerSwitch_1" in serialized
+    assert report["devices"][0]["support_tier"] == "profiled"
 
 
 async def main():
@@ -715,6 +843,10 @@ async def main():
         ("config_flow: 密码错误", test_config_flow_user_bad_credentials),
         ("config_flow: 无法连接", test_config_flow_user_cannot_connect),
         ("config_flow: reauth 两步", test_config_flow_reauth_flow),
+        (
+            "config_flow: reauth 拒绝其他账号",
+            test_config_flow_reauth_rejects_wrong_account,
+        ),
         ("coordinator: 首刷", test_coordinator_first_refresh),
         ("coordinator: 无 token 先登录", test_coordinator_login_when_no_token),
         ("coordinator: token 恢复", test_coordinator_token_recovery),
@@ -729,6 +861,11 @@ async def main():
         ("coordinator: MQTT 属性回推", test_mqtt_property_applied),
         ("switch 平台", test_switch_platform),
         ("switch 只读 PID 保护", test_switch_read_only_products),
+        (
+            "switch 未知设备安全发现",
+            test_switch_unknown_capability_is_discovered_disabled,
+        ),
+        ("switch 未知电池面板只读", test_switch_unknown_battery_panel_stays_read_only),
         ("switch 平台（单键设备）", test_switch_single_channel_device),
         ("light 平台", test_light_platform),
         ("cover 平台", test_cover_platform),
@@ -741,6 +878,10 @@ async def main():
         ("PID 309 BLE 生命周期", test_ble_charger_coordinator_lifecycle),
         ("binary_sensor 平台", test_binary_sensor_platform),
         ("options 流", test_options_flow),
+        ("options 加载家庭", test_options_flow_loads_current_families),
+        ("options 家庭范围生效", test_coordinator_options_override_family_scope),
+        ("legacy bull 配置原位升级", test_coordinator_accepts_legacy_family_scope),
+        ("匿名诊断", test_anonymized_diagnostics),
     ]
     print("=" * 60)
     for name, fn in tests:

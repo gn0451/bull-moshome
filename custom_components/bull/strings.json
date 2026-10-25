@@ -38,6 +38,7 @@
     "error": {
       "invalid_auth": "账号或密码错误",
       "cannot_connect": "无法连接公牛智家云，请稍后重试",
+      "wrong_account": "登录的不是原账号，请使用此集成最初绑定的账号",
       "no_family_selected": "请至少选择一个家庭"
     },
     "abort": {
@@ -49,6 +50,7 @@
       "init": {
         "title": "公牛智家选项",
         "data": {
+          "family_ids": "要接入的家庭",
           "scan_interval": "轮询间隔（秒，15-3600）",
           "mqtt_enabled": "启用 MQTT 实时状态推送"
         }
