@@ -1,6 +1,6 @@
 """公牛智家云（MosHome）Home Assistant 自定义集成。
 
-基于独立逆向的 bull_iot 客户端（client/signing/crypto/mqtt_listener 四个模块
+基于独立实现的 bull_iot 客户端（client/signing/crypto/mqtt_listener 四个模块
 随本组件一同分发，自包含，无外部依赖）。
 支持：开关通道、电量类传感器、设备在线状态。
 """

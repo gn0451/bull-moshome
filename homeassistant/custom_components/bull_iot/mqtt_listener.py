@@ -1,6 +1,6 @@
 """MQTT 实时状态监听（设备物理操作后云端状态回推）。
 
-协议要点（逆向结论）：
+协议要点（实测结论）：
 - Broker: emqx-prod.iotbull.com:1883（明文 TCP，无 TLS）
 - 用户名 = openid，密码 = access_token
 - clientId = "IOS@2.9.1@" + openid
