@@ -170,6 +170,8 @@ async def test_config_flow_user_success():
         )
     assert result["type"] == "create_entry", result
     assert result["data"]["username"] == "13800138000"
+    # 条目名要脱敏：手机号会出现在设置页、截图和 issue 里
+    assert result["title"] == "138****8000", result["title"]
     assert result["data"][CONF_FAMILY_IDS] == [1001]
     assert result["data"][CONF_MQTT_ENABLED] is False
 

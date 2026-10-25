@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.3.3
+
+- Ship brand assets inside `custom_components/bull/brand/`, so Home Assistant renders the
+  integration icon locally (HA 2024.5+). This also satisfies the HACS `check brands` step.
+- Mask the account in the config entry title (`138****0398` instead of the full phone number).
+  The title is visible in Settings → Devices & services and in every screenshot or issue
+  report; existing entries keep their current title until they are re-added.
+- Add a device list screenshot to the README.
+
 ## 1.3.2
 
 - Fix entity names repeating the device name when `has_entity_name` is enabled.
