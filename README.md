@@ -124,10 +124,11 @@ cp -R custom_components/bull /path/to/ha/config/custom_components/
 
 ## 安全与隐私
 
-- **云端 MQTT 是明文连接。** 官方 App 使用 `emqx-prod.iotbull.com:1883`（无 TLS），
-  本集成沿用同一通道，`openid` 与 `access_token` 会以明文经过公网。这是协议现状，
-  无法在客户端侧修复。若你的网络环境不可信，可在集成选项中**关闭 MQTT 推送**，
-  仅使用轮询——代价是状态更新延迟到一个轮询周期。
+- **云端 MQTT 默认走 TLS。** 云端在 `emqx-prod.iotbull.com:8084/mqtt` 提供
+  MQTT over WebSocket + TLS（证书 `*.iotbull.com`，GlobalSign 签发，TLS 1.3），
+  本集成默认走这条通道，`openid` 与 `access_token` 在 TLS 内传输。
+  该通道不可用时会**自动回退**到官方 App 使用的明文 `1883` 并在日志中告警；
+  若你的网络环境不可信且不希望回退，可在选项中关闭 MQTT 推送，仅用轮询。
 - **密码保存在 HA 的 `.storage`**（配置条目内），与其它集成的凭据同等对待；
   删除集成条目即清除。
 - **大功率设备请谨慎自动化。** 通过云端接口控制充电桩、加热器存在风险，

@@ -248,7 +248,7 @@ python -m bull_iot.cli watch --seconds 60
 | 登录请求 | `x-www-form-urlencoded` + 头部 `Login_parameter: APP_PWD`（大小写敏感） |
 | 设备列表 | `GET /mos/home/v3/rooms` 返回拍平的设备列表；主条目（`deviceEntity=true`）带昵称，功能实体带通道名 |
 | 属性控制 | `PUT /mos/v1/dc/setDeviceProperty/{iotId}`，body 为 `[{"identifier":..., "value":...}]` |
-| MQTT | `emqx-prod.iotbull.com:1883`，username=openid、password=access_token、clientId=`IOS@2.9.1@<openid>`；连接后发布绑定报文，之后接收 `thing.properties` / `thing.status` 推送 |
+| MQTT | 默认 `emqx-prod.iotbull.com:8084/mqtt`（WebSocket + TLS），失败回退 `1883`（明文）；username=openid、password=access_token、clientId=`IOS@2.9.1@<openid>`；连接后发布绑定报文，之后接收 `thing.properties` / `thing.status` 推送 |
 
 ---
 

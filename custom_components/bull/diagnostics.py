@@ -46,6 +46,7 @@ async def async_get_config_entry_diagnostics(hass, entry) -> dict[str, Any]:
         "entry": async_redact_data(dict(entry.data), TO_REDACT),
         "options": async_redact_data(dict(entry.options), TO_REDACT),
         "selected_family_count": len(family_ids),
+        "mqtt_transport": coordinator.mqtt_transport,
         "devices": [_device_report(device) for device in coordinator.devices.values()],
     }
 

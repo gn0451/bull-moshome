@@ -176,6 +176,13 @@ class BullCoordinator(DataUpdateCoordinator[dict[str, Device]]):
     def _async_ble_update(self) -> None:
         self.async_set_updated_data(self.devices)
 
+    @property
+    def mqtt_transport(self) -> str | None:
+        """Return the transport actually carrying MQTT push (``wss`` / ``tcp``)."""
+        if self._mqtt is None:
+            return None
+        return "wss" if getattr(self._mqtt, "secure", False) else "tcp"
+
     # ------------------------------------------------------------------ #
     # 凭证
     # ------------------------------------------------------------------ #

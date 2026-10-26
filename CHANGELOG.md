@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.3.4
+
+- Use MQTT over WebSocket + TLS (`emqx-prod.iotbull.com:8084/mqtt`) by default, so
+  `openid` and `access_token` no longer cross the internet in plaintext. Falls back to the
+  official app's plaintext `1883` channel when the TLS endpoint is unreachable, logging a
+  warning so the downgrade is visible.
+- Report the active MQTT transport (`wss` / `tcp`) in diagnostics.
+- Document the transport probe (port scan, certificate chain, CONNACK evidence) in
+  PROTOCOL.md §8.1.
+
 ## 1.3.3
 
 - Ship brand assets inside `custom_components/bull/brand/`, so Home Assistant renders the

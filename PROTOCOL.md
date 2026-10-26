@@ -14,7 +14,7 @@
 | 通道 | 地址 | 用途 |
 |------|------|------|
 | HTTPS API | `https://api.iotbull.com` | 登录、设备管理、控制指令 |
-| MQTT | `emqx-prod.iotbull.com:1883`（明文 TCP） | 设备状态实时回推 |
+| MQTT | `emqx-prod.iotbull.com:8084/mqtt`（WebSocket + TLS）<br>`emqx-prod.iotbull.com:1883`（明文 TCP，官方 App 通道） | 设备状态实时回推 |
 
 所有 HTTP 请求经过阿里云 API 网关风格（`x-ca-*` 签名头）的 HMAC-SHA256 签名鉴权。
 
@@ -216,7 +216,9 @@ body: {"identifier": "SheduleAuth"}
 
 ## 8. MQTT 实时状态
 
-- Broker：`emqx-prod.iotbull.com:1883`（明文，无 TLS）
+- Broker 有两条通道，账号体系相同：
+  - `emqx-prod.iotbull.com:8084/mqtt` —— MQTT over **WebSocket + TLS**（默认使用）
+  - `emqx-prod.iotbull.com:1883` —— 明文 TCP（官方 App 使用，作为回退）
 - 用户名：`openid`；密码：`access_token`
 - clientId：`IOS@2.9.1@<openid>`
 - 连接后订阅 `/sys/app/down/account/bind_reply`，并向 `/sys/app/up/account/bind`
@@ -225,6 +227,22 @@ body: {"identifier": "SheduleAuth"}
   - `method=thing.properties`：`params.items.{identifier}.value`，属性变化
   - `method=thing.status`：`params.status.value`，在线状态（`ONLINE`/`OFFLINE` 或 1/3）
 - 报文带 `params.iotId` 与 `params.status.time`（可用时间戳丢弃乱序旧消息）
+
+### 8.1 传输层探测（2026-10-26）
+
+| 探测 | 结果 |
+|------|------|
+| 端口扫描 | `1883` 开放；`8084` 开放；`8883` / `8083` / `443` / `9001` 均不可达 |
+| TLS 握手（8084） | 成功，**TLSv1.3 / TLS_AES_256_GCM_SHA384** |
+| 证书 | `CN=*.iotbull.com`，SAN `*.iotbull.com` / `iotbull.com`，签发者 GlobalSign GCC R46 OV TLS CA 2025，主体为公牛集团股份有限公司，有效期至 2027-03-21 |
+| MQTT 层（8084，路径 `/mqtt`） | 用假凭证发 CONNECT 返回 **CONNACK rc=5**（未授权）—— 说明传输与协议层都正常，只是凭证错误 |
+| 路径探测 | `/mqtt` 有应答；`/ws`、`/` 无 CONNACK，因此 WebSocket 路径是 `/mqtt` |
+
+结论：云端存在一条带公网可信证书的 MQTT over WSS 通道，与明文 `1883` 使用同一套
+`openid` / `access_token` 鉴权。集成默认使用它，失败时回退明文通道。
+
+> 未完成：本探测只用假凭证验证到「CONNACK 层」，**没有**用真实 token 完成一次
+> WSS 绑定与属性回推。真实账号下的等价性有待实测补充。
 
 ## 9. 错误码
 
@@ -258,7 +276,8 @@ body: {"identifier": "SheduleAuth"}
 | 家庭列表签名 | 假 Bearer token 打 `GET /v2/families` | HTTP 401 `invalid_token` → 签名正确 |
 | 设备列表签名 | 假 token 打 `GET /mos/home/v3/rooms` | HTTP 401 `invalid_token` → 签名正确 |
 | 控制指令签名 | 假 token 打 `PUT /mos/v1/dc/setDeviceProperty/fake-iot-id` | HTTP 401 `invalid_token` → 签名正确 |
-| MQTT broker | TCP 连接 `emqx-prod.iotbull.com:1883` | 可连接 |
+| MQTT broker（明文） | TCP 连接 `emqx-prod.iotbull.com:1883` | 可连接 |
+| MQTT broker（TLS） | WSS 连接 `emqx-prod.iotbull.com:8084/mqtt` | TLS 1.3 握手通过，证书 `*.iotbull.com` |
 
 ### 11.2 2026-10-25 真实账号实测（全链路）
 

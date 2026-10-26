@@ -1,7 +1,10 @@
 """MQTT 实时状态监听（设备物理操作后云端状态回推）。
 
 协议要点（实测结论）：
-- Broker: emqx-prod.iotbull.com:1883（明文 TCP，无 TLS）
+- Broker: emqx-prod.iotbull.com
+    - 8084/mqtt  MQTT over WebSocket + TLS（证书 *.iotbull.com，GlobalSign 签发）
+    - 1883      明文 TCP（官方 App 使用的通道）
+- 默认优先走 WSS，连接失败时自动回退到 1883 并在日志里说明
 - 用户名 = openid，密码 = access_token
 - clientId = "IOS@2.9.1@" + openid
 - 连接后订阅 /sys/app/down/account/bind_reply，并向
@@ -22,18 +25,36 @@ _LOGGER = logging.getLogger(__name__)
 BIND_REPLY_TOPIC = "/sys/app/down/account/bind_reply"
 BIND_TOPIC = "/sys/app/up/account/bind"
 BROKER_HOST = "emqx-prod.iotbull.com"
-BROKER_PORT = 1883
+BROKER_PORT = 1883          # 明文 TCP
+WSS_PORT = 8084             # MQTT over WebSocket + TLS
+WSS_PATH = "/mqtt"
+CONNACK_TIMEOUT = 6.0       # 秒：等 CONNACK 的上限，超时即判定该通道不可用
 
 
-def _new_client(client_id: str):
-    """创建 paho 客户端，兼容 paho-mqtt 1.6 与 2.x。"""
+def _new_client(client_id: str, secure: bool = False):
+    """创建 paho 客户端，兼容 paho-mqtt 1.6 与 2.x。
+
+    ``secure=True`` 时使用 WebSocket 传输。paho 1.6 的 ws 传输需要额外的
+    ``websocket-client``，缺失时会抛 ImportError —— 此时返回 None，
+    由调用方回退到明文 TCP，避免把新依赖强加给已有用户。
+    """
+    transport = "websockets" if secure else "tcp"
     try:
-        return mqtt.Client(
-            mqtt.CallbackAPIVersion.VERSION1,
-            client_id=client_id,
-        )
-    except (AttributeError, TypeError):
-        return mqtt.Client(client_id=client_id)
+        try:
+            client = mqtt.Client(
+                mqtt.CallbackAPIVersion.VERSION1,
+                client_id=client_id,
+                transport=transport,
+            )
+        except (AttributeError, TypeError):
+            client = mqtt.Client(client_id=client_id, transport=transport)
+    except (ImportError, ValueError, OSError):
+        return None
+
+    if secure:
+        client.tls_set()
+        client.ws_set_options(path=WSS_PATH)
+    return client
 
 
 class BullMqttListener:
@@ -53,39 +74,100 @@ class BullMqttListener:
         on_property=None,
         on_status=None,
         wildcard: bool = False,
+        prefer_tls: bool = True,
     ):
         self.openid = openid
         self.access_token = access_token
         self.on_property = on_property
         self.on_status = on_status
         self.wildcard = wildcard
+        self.prefer_tls = prefer_tls
         self.bound = threading.Event()
-        self._client = _new_client(f"IOS@2.9.1@{openid}")
-        self._client.on_connect = self._on_connect
-        self._client.on_message = self._on_message
-        self._client.username_pw_set(openid, access_token)
-        self._client.reconnect_delay_set(min_delay=15, max_delay=120)
+        self.secure = False          # 实际生效的通道是否为 TLS
+        self.connack_rc = None       # 最近一次 CONNACK 返回码
+        self._client = None
+        self._connected = threading.Event()
+        self._lock = threading.Lock()
 
     # ------------------------------------------------------------------ #
     def start(self) -> None:
-        self._client.connect_async(BROKER_HOST, port=BROKER_PORT)
-        self._client.loop_start()
+        """优先建立 WSS 连接，失败时回退到明文 TCP。"""
+        if self.prefer_tls:
+            if self._connect(secure=True):
+                return
+            _LOGGER.warning(
+                "MQTT over TLS 不可用，回退到明文 1883（token 将明文传输）"
+            )
+        self._connect(secure=False)
+
+    def _connect(self, secure: bool) -> bool:
+        """建立一条连接并等待 CONNACK。返回 True 表示拿到了 CONNACK。"""
+        with self._lock:
+            client = _new_client(f"IOS@2.9.1@{self.openid}", secure=secure)
+            if client is None:
+                _LOGGER.debug("当前 paho 版本不支持 WebSocket 传输")
+                return False
+
+            self._connected.clear()
+            self.connack_rc = None
+            client.on_connect = self._on_connect
+            client.on_message = self._on_message
+            client.username_pw_set(self.openid, self.access_token)
+            client.reconnect_delay_set(min_delay=15, max_delay=120)
+            self._client = client
+            self.secure = secure
+
+            port = WSS_PORT if secure else BROKER_PORT
+            try:
+                client.connect_async(BROKER_HOST, port=port)
+                client.loop_start()
+            except Exception:  # noqa: BLE001 - 任何建连异常都视为该通道不可用
+                _LOGGER.debug("MQTT 建连异常（secure=%s）", secure, exc_info=True)
+                self._client = None
+                return False
+
+        got_connack = self._connected.wait(CONNACK_TIMEOUT)
+        if not got_connack:
+            _LOGGER.debug("MQTT 通道 %s 在 %.0fs 内未收到 CONNACK", port, CONNACK_TIMEOUT)
+            try:
+                client.loop_stop()
+            except Exception:  # noqa: BLE001
+                _LOGGER.debug("停止未连通的 MQTT 循环失败", exc_info=True)
+            with self._lock:
+                if self._client is client:
+                    self._client = None
+        return got_connack
 
     def stop(self) -> None:
+        with self._lock:
+            client = self._client
+            self._client = None
+        if client is None:
+            return
         # 先 disconnect 再停网络循环，确保断开报文能发出
         try:
-            self._client.disconnect()
+            client.disconnect()
         except RuntimeError:  # 未连接时 disconnect 会抛异常
             _LOGGER.debug("MQTT disconnect ignored because the client is not connected")
-        self._client.loop_stop()
+        try:
+            client.loop_stop()
+        except Exception:  # noqa: BLE001
+            _LOGGER.debug("MQTT loop_stop 失败", exc_info=True)
 
     # ------------------------------------------------------------------ #
     def _on_connect(self, client, userdata, flags, reason_code, properties=None):
         rc = getattr(reason_code, "value", reason_code)
+        self.connack_rc = rc
+        self._connected.set()
         if rc != mqtt.MQTT_ERR_SUCCESS:
             _LOGGER.warning("MQTT 连接失败: %s", rc)
             return
-        _LOGGER.debug("MQTT 已连接 %s:%s", BROKER_HOST, BROKER_PORT)
+        _LOGGER.debug(
+            "MQTT 已连接 %s:%s（%s）",
+            BROKER_HOST,
+            WSS_PORT if self.secure else BROKER_PORT,
+            "WSS" if self.secure else "TCP",
+        )
         client.subscribe(BIND_REPLY_TOPIC, qos=0)
         if self.wildcard:
             client.subscribe("#", qos=0)
