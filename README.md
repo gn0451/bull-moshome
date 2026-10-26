@@ -212,6 +212,8 @@ python homeassistant/tests/test_e2e.py     # 需安装 homeassistant
 - **真实账号全链路已实测**：登录成功、448 台唯一设备完整拉取、MQTT 绑定应答 `code=200`、
   **真实设备控制指令已下发并验证**（`setDeviceProperty` 关闭 G27 开关通道，云端接受且回读一致，
   见 PROTOCOL.md 第 11.2 节）
+- **MQTT over TLS 已用真实账号验收**（1.3.4）：诊断 `mqtt_transport` 为 `wss`，
+  无回退告警，46 个实体与升级前一致，启动错误 0（见 PROTOCOL.md 第 8.2 节）
 - MQTT 属性回推需设备状态变化时触发；监听窗口内无物理操作时只会看到绑定应答
 
 ## 贡献

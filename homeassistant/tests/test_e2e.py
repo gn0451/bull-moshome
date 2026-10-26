@@ -851,6 +851,28 @@ async def test_anonymized_diagnostics():
     assert report["devices"][0]["support_tier"] == "profiled"
 
 
+async def test_diagnostics_redact_legacy_family_scope():
+    """老条目把家庭存在 selected_families 里：诊断不能泄露它，计数也不能是 0。"""
+    hass = FakeHass()
+    entry = FakeEntry(
+        data={
+            "username": "13800138000",
+            "password": "secret",
+            LEGACY_CONF_FAMILY_IDS: [182552],
+            CONF_MQTT_ENABLED: False,
+        }
+    )
+    device = make_fake_device()
+    coordinator = await make_coordinator(hass, entry, device)
+    coordinator.devices = {device.iot_id: device}
+
+    report = await diagnostics_mod.async_get_config_entry_diagnostics(hass, entry)
+    serialized = repr(report)
+    assert "182552" not in serialized, "家庭 ID 泄露到诊断里"
+    assert report["selected_family_count"] == 1, report["selected_family_count"]
+
+
+
 async def test_migrate_entry_masks_account_title():
     """v1 -> v2：把旧条目名里的手机号脱敏，避免出现在设置页和截图里。"""
     import bull as bull_pkg
@@ -910,6 +932,7 @@ async def main():
         ("options 加载家庭", test_options_flow_loads_current_families),
         ("options 家庭范围生效", test_coordinator_options_override_family_scope),
         ("legacy bull 配置原位升级", test_coordinator_accepts_legacy_family_scope),
+        ("诊断脱敏老条目家庭", test_diagnostics_redact_legacy_family_scope),
         ("条目名脱敏迁移", test_migrate_entry_masks_account_title),
         ("匿名诊断", test_anonymized_diagnostics),
     ]

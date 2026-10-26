@@ -6,13 +6,20 @@ from typing import Any
 
 from homeassistant.components.diagnostics import async_redact_data
 
-from .const import CONF_FAMILY_IDS, CONF_PASSWORD, CONF_USERNAME, DOMAIN
+from .const import (
+    CONF_FAMILY_IDS,
+    CONF_PASSWORD,
+    CONF_USERNAME,
+    DOMAIN,
+    LEGACY_CONF_FAMILY_IDS,
+)
 from .device_profiles import profile_report
 
 TO_REDACT = {
     CONF_USERNAME,
     CONF_PASSWORD,
     CONF_FAMILY_IDS,
+    LEGACY_CONF_FAMILY_IDS,
     "access_token",
     "refresh_token",
     "openid",
@@ -41,11 +48,12 @@ def _device_report(device) -> dict[str, Any]:
 async def async_get_config_entry_diagnostics(hass, entry) -> dict[str, Any]:
     """Return an anonymized account-level capability report."""
     coordinator = hass.data[DOMAIN][entry.entry_id]
-    family_ids = entry.options.get(CONF_FAMILY_IDS, entry.data.get(CONF_FAMILY_IDS, []))
     return {
         "entry": async_redact_data(dict(entry.data), TO_REDACT),
         "options": async_redact_data(dict(entry.options), TO_REDACT),
-        "selected_family_count": len(family_ids),
+        # 用协调器实际生效的范围，而不是自己再解析一遍：老条目把家庭存在
+        # selected_families 里，自己解析会算成 0。
+        "selected_family_count": len(coordinator.family_ids),
         "mqtt_transport": coordinator.mqtt_transport,
         "devices": [_device_report(device) for device in coordinator.devices.values()],
     }

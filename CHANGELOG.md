@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.3.5
+
+- Fix diagnostics leaking the family ID for entries migrated from `hass-iotbull`: the legacy
+  `selected_families` key was missing from the redaction list, so the family ID appeared in
+  plain text even though the docs promise it is removed. `selected_family_count` also
+  reported `0` for those entries and now reports the real count.
+- Record the real-account verification of MQTT over TLS (PROTOCOL.md §8.2): `mqtt_transport`
+  is `wss`, no fallback warning, entity count unchanged.
+
 ## 1.3.4
 
 - Use MQTT over WebSocket + TLS (`emqx-prod.iotbull.com:8084/mqtt`) by default, so
