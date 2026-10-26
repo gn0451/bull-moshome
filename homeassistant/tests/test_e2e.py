@@ -89,6 +89,18 @@ class FakeEntry:
         self.title = "13800138000"
         self.unique_id = "fake_openid"
         self._unload_callbacks = []
+        # 以下属性用于模拟 ConfigEntry 的公开接口。HA 版本升级后会陆续访问这些字段
+        # （例如 async_update_reload_and_abort 会读 update_listeners），补齐可避免
+        # 测试替身因新版 HA 内部实现变化而报 AttributeError。
+        self.domain = DOMAIN
+        self.version = 1
+        self.minor_version = 1
+        self.source = "user"
+        self.state = "loaded"
+        self.update_listeners = []
+        self.discovery_keys = {}
+        self.pref_disable_polling = False
+        self.runtime_data = None
 
     def async_on_unload(self, callback):
         self._unload_callbacks.append(callback)
