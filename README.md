@@ -58,6 +58,12 @@
 完整 PID 清单见 [`device_profiles.json`](custom_components/bull/device_profiles.json)，
 新增设备的贡献流程见 [COMPATIBILITY.md](COMPATIBILITY.md)。
 
+多路设备会按 App 内设置的通道昵称逐路建实体，一路一个开关，互不影响：
+
+<p align="center">
+  <img src="docs/images/ha-device-detail.png" alt="多路开关的设备详情：三路通道与在线状态" width="100%">
+</p>
+
 ## 与 hass-iotbull 的关系
 
 本项目的设备覆盖范围（PID 清单）、`bull` 域名与实体唯一 ID 规则沿用自
