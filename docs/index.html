@@ -486,7 +486,7 @@
     <div class="proto reveal"><span class="idx">03</span><h4>登录请求</h4><p><code>x-www-form-urlencoded</code> 提交，必须携带头部 <code>Login_parameter: APP_PWD</code>（大小写敏感，放 body 或 query 均无效）。</p></div>
     <div class="proto reveal"><span class="idx">04</span><h4>设备模型</h4><p><code>/mos/home/v3/rooms</code> 返回拍平列表；主条目（deviceEntity=true）带昵称，功能实体带通道名；属性拍平为 <code>父.子</code>。</p></div>
     <div class="proto reveal"><span class="idx">05</span><h4>属性控制</h4><p><code>PUT /mos/v1/dc/setDeviceProperty/{iotId}</code>，body 为 <code>[{"identifier":..., "value":...}]</code>，实测云端接受且回读一致。</p></div>
-    <div class="proto reveal"><span class="idx">06</span><h4>MQTT 实时通道</h4><p><code>emqx-prod.iotbull.com:1883</code>，username=openid、password=access_token、clientId=<code>IOS@2.9.1@&lt;openid&gt;</code>；连接后发布绑定报文，接收 <code>thing.properties</code> / <code>thing.status</code>。</p></div>
+    <div class="proto reveal"><span class="idx">06</span><h4>MQTT 实时通道</h4><p>默认 <code>emqx-prod.iotbull.com:8084/mqtt</code>（WebSocket + TLS，证书 <code>*.iotbull.com</code>），失败回退明文 <code>1883</code>；username=openid、password=access_token、clientId=<code>IOS@2.9.1@&lt;openid&gt;</code>；连接后发布绑定报文，接收 <code>thing.properties</code> / <code>thing.status</code>。</p></div>
   </div>
 </section>
 
@@ -533,6 +533,7 @@
         <li>账号密码只存两处：你自己机器上的 <code>.env</code>（客户端，默认 gitignore），或 Home Assistant 的 <code>.storage</code>（集成，删除即清除）</li>
         <li>仓库不包含、也不上传任何真实凭证，示例手机号均为虚构测试号</li>
         <li>所有网络通信仅与公牛官方云端点发生</li>
+        <li>MQTT 默认走 <b>TLS</b>（<code>8084/mqtt</code>），token 不在公网明文传输；仅当该通道不可用时才回退官方 App 的明文 1883，并写日志告警</li>
       </ul>
     </div>
     <div class="card reveal">
