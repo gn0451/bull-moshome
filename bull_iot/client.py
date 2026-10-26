@@ -6,7 +6,9 @@
 
 import json
 import re
+import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from urllib.parse import urlencode, urljoin
 
@@ -102,6 +104,13 @@ class BullCloudClient:
     def __init__(self, timeout: float = 10.0):
         self.timeout = timeout
         self.session = requests.Session()
+        # requests.Session 不保证线程安全：并发拉设备详情时每个线程各用一个
+        self._local = threading.local()
+        self._sessions: list[requests.Session] = [self.session]
+        self._sessions_lock = threading.Lock()
+        self._timings_lock = threading.Lock()
+        # 并发度：单设备详情约 400ms，19 台串行要 8s，4 路并发压到 ~2s
+        self.device_info_workers = 4
         self.access_token: str | None = None
         self.refresh_token: str | None = None
         self.openid: str | None = None
@@ -134,9 +143,10 @@ class BullCloudClient:
             # 家庭 ID 等数字段归一化，避免每个家庭各占一个键
             key = f"{method} {re.sub(r'/[0-9]+', '/{id}', path)}"
             elapsed = (time.perf_counter() - started) * 1000
-            self.request_timings[key] = round(
-                self.request_timings.get(key, 0.0) + elapsed, 1
-            )
+            with self._timings_lock:
+                self.request_timings[key] = round(
+                    self.request_timings.get(key, 0.0) + elapsed, 1
+                )
 
     def _request_impl(
         self,
@@ -155,7 +165,7 @@ class BullCloudClient:
         if bearer and self.access_token:
             headers["Authorization"] = f"Bearer {self.access_token}"
 
-        resp = self.session.request(
+        resp = self._session().request(
             method,
             urljoin(API_URL, path),
             headers=headers,
@@ -289,11 +299,15 @@ class BullCloudClient:
             family_ids = [f["familyId"] for f in families]
 
         seen_iot_ids: set[str] = set()
+        new_iot_ids: list[str] = []
         for family_id in family_ids:
             self.switch_family(family_id)
             for info in self.get_rooms_and_devices():
                 seen_iot_ids.add(info["iotId"])
-                self._parse_device(devices, info)
+                self._parse_device(devices, info, new_iot_ids)
+        # 新设备的型号/固件要逐台查详情（单台约 400ms），串行会把启动拖到 10s，
+        # 这里用小并发补，失败不影响主流程。
+        self._enrich_device_info(devices, new_iot_ids)
 
         # Only prune after every selected family completed successfully. This
         # removes devices deleted from MosHome without turning a partial cloud
@@ -302,8 +316,17 @@ class BullCloudClient:
             devices.pop(iot_id, None)
         return devices
 
-    def _parse_device(self, devices: dict[str, Device], info: dict) -> None:
-        """解析一条设备记录；deviceEntity=true 的是主设备条目，其余是功能实体。"""
+    def _parse_device(
+        self,
+        devices: dict[str, Device],
+        info: dict,
+        new_iot_ids: list[str] | None = None,
+    ) -> None:
+        """解析一条设备记录；deviceEntity=true 的是主设备条目，其余是功能实体。
+
+        ``new_iot_ids`` 不为 None 时只登记待补详情的设备，由 :meth:`refresh_devices`
+        统一并发拉取；直接调用本方法（旧用法）时退化为同步拉取。
+        """
         iot_id = info["iotId"]
         product_id = info["product"]["globalProductId"]
 
@@ -313,14 +336,10 @@ class BullCloudClient:
             device.room = info.get("roomName", "")
             for prop in info.get("property", {}).values():
                 flatten_properties(device.properties, prop["identifier"], prop["value"])
-            try:
-                detail = self.get_device_info(iot_id)
-                device.detail = detail
-                device.product_name = detail.get("productName", "")
-                device.model_name = detail.get("modelName", "")
-                device.firmware_version = detail.get("firmwareVersion", "")
-            except BullCloudError:
-                pass
+            if new_iot_ids is None:
+                self._fetch_device_info(device)
+            else:
+                new_iot_ids.append(iot_id)
             devices[iot_id] = device
         else:
             device = devices[iot_id]
@@ -339,6 +358,44 @@ class BullCloudClient:
             element = info.get("elementIdentifier")
             if element:
                 device.properties.setdefault(f"__name__{element}", info["nickName"])
+
+    def _enrich_device_info(
+        self, devices: dict[str, Device], iot_ids: list[str]
+    ) -> None:
+        """Fetch model/firmware for new devices with bounded concurrency."""
+        # Device.detail 默认是 {}，所以用「空字典」表示还没拉过；
+        # 拉取失败的设备会写入占位标记，避免每轮刷新都重试。
+        todo = [
+            iot_id
+            for iot_id in dict.fromkeys(iot_ids)
+            if iot_id in devices and not devices[iot_id].detail
+        ]
+        if not todo:
+            return
+        workers = max(1, min(self.device_info_workers, len(todo)))
+        if workers == 1:
+            for iot_id in todo:
+                self._fetch_device_info(devices[iot_id])
+            return
+        with ThreadPoolExecutor(
+            max_workers=workers, thread_name_prefix="bull-info"
+        ) as pool:
+            list(pool.map(lambda iot_id: self._fetch_device_info(devices[iot_id]), todo))
+
+    def _fetch_device_info(self, device: Device) -> None:
+        """Fill model/firmware from ``deviceInfo``; failures must not break refresh."""
+        try:
+            detail = self.get_device_info(device.iot_id)
+        except BullCloudError:
+            # 标记已尝试（真值），避免每轮刷新都重试同一台失败设备
+            device.detail = {"_unavailable": True}
+            return
+        device.detail = detail
+        device.product_name = detail.get("productName", "") or device.product_name
+        device.model_name = detail.get("modelName", "") or device.model_name
+        device.firmware_version = (
+            detail.get("firmwareVersion", "") or device.firmware_version
+        )
 
     # 兼容旧引用的静态方法入口
     _flatten_properties = staticmethod(flatten_properties)
@@ -415,7 +472,13 @@ class BullCloudClient:
         return key
 
     def close(self) -> None:
-        self.session.close()
+        with self._sessions_lock:
+            sessions, self._sessions = self._sessions, []
+        for session in sessions:
+            try:
+                session.close()
+            except Exception:  # noqa: BLE001 - 关闭失败不影响退出
+                pass
 
     def __enter__(self):
         return self

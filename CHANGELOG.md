@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.3.7
+
+- Fetch per-device `deviceInfo` (model / firmware) with bounded concurrency instead of one
+  blocking request per device. Measured on a real installation: 19 sequential requests made
+  up 8.3 s of an 11 s setup (PROTOCOL.md §8.3). Concurrency is 4 and each worker thread uses
+  its own `requests.Session`, deliberately staying under the WAF threshold seen earlier.
+- Fix the enrichment never running: `Device.detail` defaults to `{}`, so the "not fetched
+  yet" check must treat an empty dict as pending (the new test caught this).
+
 ## 1.3.6
 
 - Time every cloud request and report the refresh breakdown (login / family switch / device

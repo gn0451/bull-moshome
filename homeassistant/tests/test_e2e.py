@@ -851,6 +851,46 @@ async def test_anonymized_diagnostics():
     assert report["devices"][0]["support_tier"] == "profiled"
 
 
+async def test_device_info_enrichment_is_concurrent():
+    """新设备的型号/固件要并发拉取：串行 19 台会把启动拖到 8s+。"""
+    import threading
+    import time
+
+    from bull.client import BullCloudClient
+
+    client = BullCloudClient()
+    devices = {
+        f"iot_{i}": Device(iot_id=f"iot_{i}", product_id=1) for i in range(8)
+    }
+    lock = threading.Lock()
+    state = {"now": 0, "max": 0}
+
+    def fake_info(iot_id):
+        with lock:
+            state["now"] += 1
+            state["max"] = max(state["max"], state["now"])
+        time.sleep(0.03)
+        with lock:
+            state["now"] -= 1
+        return {
+            "productName": "P",
+            "modelName": f"M-{iot_id}",
+            "firmwareVersion": "1.0",
+        }
+
+    client.get_device_info = fake_info
+    try:
+        client._enrich_device_info(devices, list(devices))
+    finally:
+        client.close()
+
+    assert state["max"] > 1, "设备详情没有并发，仍是串行请求"
+    assert all(
+        d.model_name == f"M-{d.iot_id}" and d.detail for d in devices.values()
+    ), [d.model_name for d in devices.values()]
+
+
+
 async def test_refresh_timings_breakdown():
     """分阶段计时：登录 / 家庭切换 / 设备列表要分别落到对应字段。"""
     hass = FakeHass()
@@ -957,6 +997,7 @@ async def main():
         ("options 加载家庭", test_options_flow_loads_current_families),
         ("options 家庭范围生效", test_coordinator_options_override_family_scope),
         ("legacy bull 配置原位升级", test_coordinator_accepts_legacy_family_scope),
+        ("设备详情并发补全", test_device_info_enrichment_is_concurrent),
         ("刷新分阶段计时", test_refresh_timings_breakdown),
         ("诊断脱敏老条目家庭", test_diagnostics_redact_legacy_family_scope),
         ("条目名脱敏迁移", test_migrate_entry_masks_account_title),
