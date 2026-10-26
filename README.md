@@ -27,6 +27,8 @@
 
 <p align="center">
   <img src="docs/images/ha-devices.png" alt="Bull MosHome 设备列表" width="100%">
+  <br>
+  <sub>示例只接入了一个家庭（19 台设备 / 46 个实体）；完整账号 50 个家庭、448 台设备的实测记录见 <a href="PROTOCOL.md">PROTOCOL.md</a></sub>
 </p>
 
 <!-- 实体列表截图待补：docs/images/ha-entities.png（某台多路开关的实体列表，体现通道命名） -->
