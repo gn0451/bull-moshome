@@ -18,6 +18,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import ConfigEntryAuthFailed, HomeAssistantError
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
+from homeassistant.helpers.storage import Store
 
 from .client import (
     AuthenticationError,
@@ -73,6 +74,24 @@ class BullCoordinator(DataUpdateCoordinator[dict[str, Device]]):
         # 最近一次刷新的分阶段耗时（毫秒），诊断与日志共用
         self.last_refresh_timings: dict[str, object] = {}
         self.cloud_chargers: dict[str, object] = {}
+        # 设备型号/固件是静态信息，持久化缓存避免每次重启都重拉 19 次详情
+        self._info_cache: dict[str, object] = {}
+        self._store = Store(hass, 1, f"{DOMAIN}_{entry.entry_id}_device_info")
+
+    async def async_load_info_cache(self) -> None:
+        """Load the persisted deviceInfo cache (model/firmware rarely changes)."""
+        try:
+            stored = await self._store.async_load()
+        except Exception:  # noqa: BLE001 - 缓存损坏不应阻止集成启动
+            _LOGGER.debug("读取设备信息缓存失败，忽略", exc_info=True)
+            stored = None
+        if isinstance(stored, dict):
+            self._info_cache = stored
+
+    @property
+    def info_cache_size(self) -> int:
+        """Return how many devices have a cached model/firmware payload."""
+        return len(self._info_cache)
 
     @property
     def family_ids(self) -> list[int] | None:
@@ -104,7 +123,9 @@ class BullCoordinator(DataUpdateCoordinator[dict[str, Device]]):
             try:
                 if not self.client.access_token:
                     self.client.login(self.username, self.password)
-                return self.client.refresh_devices(self.devices, self.family_ids)
+                return self.client.refresh_devices(
+                    self.devices, self.family_ids, self._info_cache
+                )
             except AuthenticationError as err:
                 raise ConfigEntryAuthFailed(str(err)) from err
             except BullCloudError as err:
@@ -114,7 +135,9 @@ class BullCoordinator(DataUpdateCoordinator[dict[str, Device]]):
                         self.client.login(self.username, self.password)
                     except AuthenticationError as auth_err:
                         raise ConfigEntryAuthFailed(str(auth_err)) from auth_err
-                    return self.client.refresh_devices(self.devices, self.family_ids)
+                    return self.client.refresh_devices(
+                    self.devices, self.family_ids, self._info_cache
+                )
                 raise UpdateFailed(str(err)) from err
 
         devices = await self.hass.async_add_executor_job(_sync_update)
@@ -127,6 +150,9 @@ class BullCoordinator(DataUpdateCoordinator[dict[str, Device]]):
         self._setup_cloud_chargers()
         await self._async_setup_ble_chargers()
         self._record_timings(fetch_ms, (time.perf_counter() - overall_started) * 1000)
+        if self._info_cache:
+            # 延迟写入，避免每次轮询都落盘
+            self._store.async_delay_save(lambda: self._info_cache, 120)
         return devices
 
     def _record_timings(self, fetch_ms: float, total_ms: float) -> None:

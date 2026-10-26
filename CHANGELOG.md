@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.3.9
+
+- Persist per-device `deviceInfo` (model / firmware) in Home Assistant storage and reuse it
+  for 7 days. Concurrency alone only bought 2.5x on a real installation because the cloud
+  throttles parallel requests per account (PROTOCOL.md §8.3), so the bigger win is not asking
+  again: the first setup still fetches, every later restart makes zero `deviceInfo` calls.
+- Fix the timing key normalisation: it only collapsed numeric path segments, so the
+  alphanumeric iotIds produced one key per device instead of a single
+  `GET /mos/device/v1/deviceInfo/{id}/get` entry.
+- Diagnostics now report `device_info_cache_entries`.
+
 ## 1.3.8
 
 - **Fix a startup crash introduced in 1.3.7.** `_request` was switched to call

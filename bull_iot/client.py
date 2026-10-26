@@ -19,6 +19,46 @@ from .signing import API_HOST, build_headers
 
 API_URL = f"https://{API_HOST}"
 
+# 型号/固件这类静态信息，缓存 7 天后才重新拉取
+DEVICE_INFO_TTL = 7 * 24 * 3600
+
+_SEGMENT_SAFE = re.compile(r"^[A-Za-z0-9_-]+$")
+
+
+def _cached_detail(info_cache: dict | None, iot_id: str) -> dict | None:
+    """Return a fresh cached ``deviceInfo`` payload, or None when missing/stale."""
+    if not info_cache:
+        return None
+    entry = info_cache.get(iot_id)
+    if not isinstance(entry, dict):
+        return None
+    detail = entry.get("detail")
+    if not isinstance(detail, dict) or not detail:
+        return None
+    try:
+        age = time.time() - float(entry.get("ts") or 0)
+    except (TypeError, ValueError):
+        return None
+    return detail if age <= DEVICE_INFO_TTL else None
+
+
+def _normalize_path(path: str) -> str:
+    """Collapse identifier segments so timing keys group per endpoint.
+
+    iotId 是字母数字混合（如 ``KZFX7or158QNYLU9eCdY000000``），只匹配纯数字会把
+    每台设备各算一个键，所以这里同时识别「长度 >= 6 且含数字」的路径段。
+    静态段（``deviceInfo``、``setDeviceProperty``、``v3``）不含数字或过短，不会被误伤。
+    """
+    parts = []
+    for segment in path.split("/"):
+        is_id = segment.isdigit() or (
+            len(segment) >= 6
+            and any(ch.isdigit() for ch in segment)
+            and _SEGMENT_SAFE.match(segment)
+        )
+        parts.append("{id}" if is_id else segment)
+    return "/".join(parts)
+
 
 class BullCloudError(Exception):
     """云端返回的业务错误。"""
@@ -151,7 +191,7 @@ class BullCloudClient:
             )
         finally:
             # 家庭 ID 等数字段归一化，避免每个家庭各占一个键
-            key = f"{method} {re.sub(r'/[0-9]+', '/{id}', path)}"
+            key = f"{method} {_normalize_path(path)}"
             elapsed = (time.perf_counter() - started) * 1000
             with self._timings_lock:
                 self.request_timings[key] = round(
@@ -301,7 +341,10 @@ class BullCloudClient:
         return list(self.refresh_devices({}, family_ids).values())
 
     def refresh_devices(
-        self, devices: dict[str, Device], family_ids: list[int] | None = None
+        self,
+        devices: dict[str, Device],
+        family_ids: list[int] | None = None,
+        info_cache: dict | None = None,
     ) -> dict[str, Device]:
         """把各家庭设备刷新进已有缓存（新设备才拉取一次详情，适合定时轮询）。"""
         if family_ids is None:
@@ -317,7 +360,7 @@ class BullCloudClient:
                 self._parse_device(devices, info, new_iot_ids)
         # 新设备的型号/固件要逐台查详情（单台约 400ms），串行会把启动拖到 10s，
         # 这里用小并发补，失败不影响主流程。
-        self._enrich_device_info(devices, new_iot_ids)
+        self._enrich_device_info(devices, new_iot_ids, info_cache)
 
         # Only prune after every selected family completed successfully. This
         # removes devices deleted from MosHome without turning a partial cloud
@@ -370,29 +413,53 @@ class BullCloudClient:
                 device.properties.setdefault(f"__name__{element}", info["nickName"])
 
     def _enrich_device_info(
-        self, devices: dict[str, Device], iot_ids: list[str]
+        self,
+        devices: dict[str, Device],
+        iot_ids: list[str],
+        info_cache: dict | None = None,
     ) -> None:
-        """Fetch model/firmware for new devices with bounded concurrency."""
+        """Fetch model/firmware for new devices, using the cache when possible."""
         # Device.detail 默认是 {}，所以用「空字典」表示还没拉过；
         # 拉取失败的设备会写入占位标记，避免每轮刷新都重试。
-        todo = [
-            iot_id
-            for iot_id in dict.fromkeys(iot_ids)
-            if iot_id in devices and not devices[iot_id].detail
-        ]
+        todo: list[str] = []
+        for iot_id in dict.fromkeys(iot_ids):
+            device = devices.get(iot_id)
+            if device is None or device.detail:
+                continue
+            cached = _cached_detail(info_cache, iot_id)
+            if cached is not None:
+                self._apply_device_detail(device, cached)
+                continue
+            todo.append(iot_id)
         if not todo:
             return
         workers = max(1, min(self.device_info_workers, len(todo)))
         if workers == 1:
             for iot_id in todo:
-                self._fetch_device_info(devices[iot_id])
+                self._fetch_device_info(devices[iot_id], info_cache)
             return
         with ThreadPoolExecutor(
             max_workers=workers, thread_name_prefix="bull-info"
         ) as pool:
-            list(pool.map(lambda iot_id: self._fetch_device_info(devices[iot_id]), todo))
+            list(
+                pool.map(
+                    lambda iot_id: self._fetch_device_info(
+                        devices[iot_id], info_cache
+                    ),
+                    todo,
+                )
+            )
 
-    def _fetch_device_info(self, device: Device) -> None:
+    @staticmethod
+    def _apply_device_detail(device: Device, detail: dict) -> None:
+        device.detail = detail
+        device.product_name = detail.get("productName", "") or device.product_name
+        device.model_name = detail.get("modelName", "") or device.model_name
+        device.firmware_version = (
+            detail.get("firmwareVersion", "") or device.firmware_version
+        )
+
+    def _fetch_device_info(self, device: Device, info_cache: dict | None = None) -> None:
         """Fill model/firmware from ``deviceInfo``; failures must not break refresh."""
         try:
             detail = self.get_device_info(device.iot_id)
@@ -400,12 +467,9 @@ class BullCloudClient:
             # 标记已尝试（真值），避免每轮刷新都重试同一台失败设备
             device.detail = {"_unavailable": True}
             return
-        device.detail = detail
-        device.product_name = detail.get("productName", "") or device.product_name
-        device.model_name = detail.get("modelName", "") or device.model_name
-        device.firmware_version = (
-            detail.get("firmwareVersion", "") or device.firmware_version
-        )
+        self._apply_device_detail(device, detail)
+        if info_cache is not None:
+            info_cache[device.iot_id] = {"ts": time.time(), "detail": detail}
 
     # 兼容旧引用的静态方法入口
     _flatten_properties = staticmethod(flatten_properties)

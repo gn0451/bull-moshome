@@ -32,6 +32,7 @@ async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up Bull IoT from a config entry."""
     coordinator = BullCoordinator(hass, entry)
+    await coordinator.async_load_info_cache()
     try:
         await coordinator.async_config_entry_first_refresh()
     except ConfigEntryAuthFailed:

@@ -6,6 +6,7 @@ MQTT 回推/属性应用）、能力分级、八个平台实体与匿名诊断�
 """
 
 import asyncio
+import os
 import sys
 import types
 from pathlib import Path
@@ -63,6 +64,11 @@ class FakeHass:
     def __init__(self):
         self.loop = asyncio.get_event_loop()
         self.data = {}
+        # Store 需要 hass.config.path(...)，真实 HA 一定有，替身也要给
+        self.config = types.SimpleNamespace(
+            config_dir="/tmp/fake-ha-config",
+            path=lambda *parts: os.path.join("/tmp/fake-ha-config", *parts),
+        )
         self.config_entries = types.SimpleNamespace(
             async_update_entry=MagicMock(return_value=True),
             async_schedule_reload=MagicMock(),
@@ -144,7 +150,7 @@ async def make_coordinator(hass, entry, device=None):
     """构造 coordinator、执行首刷、注册进 hass.data（模拟 __init__.py 的行为）。"""
     client = make_fake_client()
     if device is not None:
-        client.refresh_devices.side_effect = lambda d, f=None: {
+        client.refresh_devices.side_effect = lambda d, f=None, c=None: {
             **d,
             device.iot_id: device,
         }
@@ -303,7 +309,7 @@ async def test_coordinator_login_when_no_token():
 
     client = make_fake_client()
     client.access_token = None
-    client.refresh_devices.side_effect = lambda d, f=None: {**d, device.iot_id: device}
+    client.refresh_devices.side_effect = lambda d, f=None, c=None: {**d, device.iot_id: device}
     with patch.object(coord_mod, "BullCloudClient", return_value=client):
         coordinator = coord_mod.BullCoordinator(hass, entry)
     data = await coordinator._async_update_data()
@@ -318,14 +324,14 @@ async def test_coordinator_token_recovery():
     client = make_fake_client()
     device = make_fake_device()
 
-    def refresh_devices(devices, family_ids=None):
+    def refresh_devices(devices, family_ids=None, info_cache=None):
         devices[device.iot_id] = device
         return devices
 
-    def flaky_refresh(devices, family_ids=None):
+    def flaky_refresh(devices, family_ids=None, info_cache=None):
         if not client.login.called:
             raise BullCloudError("refresh", code=9008, message="token 失效")
-        return refresh_devices(devices, family_ids)
+        return refresh_devices(devices, family_ids, info_cache)
 
     client.refresh_devices.side_effect = flaky_refresh
 
@@ -342,7 +348,7 @@ async def test_coordinator_relogin_failure_raises_auth_failed():
     entry = FakeEntry()
     client = make_fake_client()
 
-    def always_9008(devices, family_ids=None):
+    def always_9008(devices, family_ids=None, info_cache=None):
         raise BullCloudError("refresh", code=9008, message="token 失效")
 
     client.refresh_devices.side_effect = always_9008
@@ -851,6 +857,105 @@ async def test_anonymized_diagnostics():
     assert report["devices"][0]["support_tier"] == "profiled"
 
 
+async def test_info_cache_loads_from_store():
+    """Store 读取路径要真的走通（1.3.7 的教训：别让整条路径没人执行）。"""
+    hass = FakeHass()
+    entry = FakeEntry()
+    device = make_fake_device()
+    coordinator = await make_coordinator(hass, entry, device)
+
+    # 空存储：不报错，缓存为 0
+    await coordinator.async_load_info_cache()
+    assert coordinator.info_cache_size == 0
+
+    # 有数据：原样装载
+    stored = {"iot_a": {"ts": 1.0, "detail": {"modelName": "M"}}}
+    coordinator._store.async_load = AsyncMock(return_value=stored)
+    await coordinator.async_load_info_cache()
+    assert coordinator.info_cache_size == 1, coordinator.info_cache_size
+
+
+
+async def test_path_normalization_groups_device_ids():
+    """iotId 是字母数字混合，必须归一化成一个计时键，否则每台设备各占一行。"""
+    from bull.client import _normalize_path
+
+    assert (
+        _normalize_path("/mos/device/v1/deviceInfo/KZFX7or158QNYLU9eCdY000000/get")
+        == "/mos/device/v1/deviceInfo/{id}/get"
+    )
+    assert _normalize_path("/v1/families/182552/switch") == "/v1/families/{id}/switch"
+    # 静态段不能被误伤
+    assert _normalize_path("/mos/home/v3/rooms") == "/mos/home/v3/rooms"
+    assert _normalize_path("/v2/families") == "/v2/families"
+    assert (
+        _normalize_path("/mos/v1/dc/setDeviceProperty")
+        == "/mos/v1/dc/setDeviceProperty"
+    )
+
+
+async def test_device_info_cache_avoids_refetch():
+    """缓存命中时不得再请求云端（这是重启变快的关键）。"""
+    import time
+
+    from bull.client import BullCloudClient
+
+    client = BullCloudClient()
+    devices = {"iot_a": Device(iot_id="iot_a", product_id=1)}
+    cache = {
+        "iot_a": {
+            "ts": time.time(),
+            "detail": {
+                "productName": "P",
+                "modelName": "M-1",
+                "firmwareVersion": "9.9",
+            },
+        }
+    }
+    called = []
+    client.get_device_info = lambda iot_id: called.append(iot_id) or {}
+    try:
+        client._enrich_device_info(devices, ["iot_a"], cache)
+    finally:
+        client.close()
+
+    assert called == [], f"缓存命中却仍然请求了云端: {called}"
+    assert devices["iot_a"].model_name == "M-1"
+    assert devices["iot_a"].firmware_version == "9.9"
+
+
+async def test_device_info_cache_expires():
+    """缓存过期后应重新拉取，并写回新的时间戳。"""
+    import time
+
+    from bull.client import DEVICE_INFO_TTL, BullCloudClient
+
+    client = BullCloudClient()
+    devices = {"iot_a": Device(iot_id="iot_a", product_id=1)}
+    cache = {
+        "iot_a": {
+            "ts": time.time() - DEVICE_INFO_TTL - 10,
+            "detail": {"productName": "OLD", "modelName": "OLD", "firmwareVersion": "0"},
+        }
+    }
+    called = []
+
+    def fake_info(iot_id):
+        called.append(iot_id)
+        return {"productName": "NEW", "modelName": "NEW", "firmwareVersion": "1"}
+
+    client.get_device_info = fake_info
+    try:
+        client._enrich_device_info(devices, ["iot_a"], cache)
+    finally:
+        client.close()
+
+    assert called == ["iot_a"], called
+    assert devices["iot_a"].model_name == "NEW"
+    assert cache["iot_a"]["detail"]["modelName"] == "NEW"
+
+
+
 async def test_request_path_uses_thread_session():
     """真实走一遍 _request：1.3.7 就是因为 _session 缺失在这里没被拦住。"""
     import requests
@@ -1061,6 +1166,10 @@ async def main():
         ("options 加载家庭", test_options_flow_loads_current_families),
         ("options 家庭范围生效", test_coordinator_options_override_family_scope),
         ("legacy bull 配置原位升级", test_coordinator_accepts_legacy_family_scope),
+        ("设备信息缓存装载", test_info_cache_loads_from_store),
+        ("路径归一化", test_path_normalization_groups_device_ids),
+        ("设备信息缓存命中", test_device_info_cache_avoids_refetch),
+        ("设备信息缓存过期", test_device_info_cache_expires),
         ("请求走线程 Session", test_request_path_uses_thread_session),
         ("Session 线程隔离", test_session_is_thread_local),
         ("设备详情并发补全", test_device_info_enrichment_is_concurrent),
