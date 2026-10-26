@@ -1,6 +1,18 @@
 # Changelog
 
+## 1.3.8
+
+- **Fix a startup crash introduced in 1.3.7.** `_request` was switched to call
+  `self._session()`, but the method itself was never added to the class, so every request
+  raised `AttributeError: 'BullCloudClient' object has no attribute '_session'` and the
+  integration failed to set up. **Skip 1.3.7 and upgrade straight to 1.3.8.**
+- Add regression tests that run the real `_request` path with a patched transport and assert
+  per-thread Session isolation. The 1.3.7 tests only used a mocked client, so nothing ever
+  executed `_request` — that gap is now closed.
+
 ## 1.3.7
+
+> ⚠️ **此版本启动即崩溃**（`_session` 方法缺失），请直接使用 1.3.8。
 
 - Fetch per-device `deviceInfo` (model / firmware) with bounded concurrency instead of one
   blocking request per device. Measured on a real installation: 19 sequential requests made

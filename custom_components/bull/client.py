@@ -123,6 +123,16 @@ class BullCloudClient:
     # ------------------------------------------------------------------ #
     # 基础请求
     # ------------------------------------------------------------------ #
+    def _session(self) -> requests.Session:
+        """Return this thread's own Session (``requests.Session`` is not thread safe)."""
+        session = getattr(self._local, "session", None)
+        if session is None:
+            session = requests.Session()
+            self._local.session = session
+            with self._sessions_lock:
+                self._sessions.append(session)
+        return session
+
     def _request(
         self,
         method: str,

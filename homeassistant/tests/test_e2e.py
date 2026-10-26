@@ -851,6 +851,70 @@ async def test_anonymized_diagnostics():
     assert report["devices"][0]["support_tier"] == "profiled"
 
 
+async def test_request_path_uses_thread_session():
+    """真实走一遍 _request：1.3.7 就是因为 _session 缺失在这里没被拦住。"""
+    import requests
+
+    from bull.client import BullCloudClient
+
+    client = BullCloudClient()
+    calls = {}
+
+    class FakeResponse:
+        status_code = 200
+        text = ""
+
+        def json(self):
+            return {"success": True, "result": {"families": []}}
+
+    def fake_request(session, method, url, **kwargs):
+        calls["method"] = method
+        calls["url"] = url
+        calls["session"] = id(session)
+        return FakeResponse()
+
+    original = requests.Session.request
+    requests.Session.request = fake_request
+    try:
+        result = client._request("GET", "/v2/families")
+        assert result["result"] == {"families": []}, result
+        assert calls["url"].endswith("/v2/families"), calls["url"]
+        assert calls["method"] == "GET", calls
+        # 同一线程内应复用同一个 Session
+        assert id(client._session()) == calls["session"]
+    finally:
+        requests.Session.request = original
+        client.close()
+
+    # 计时包装器确实记录了这次请求
+    assert "GET /v2/families" in client.request_timings, client.request_timings
+
+
+async def test_session_is_thread_local():
+    """每个线程必须拿到自己的 Session（requests.Session 不保证线程安全）。"""
+    import threading
+
+    from bull.client import BullCloudClient
+
+    client = BullCloudClient()
+    main_session = client._session()
+    assert client._session() is main_session
+
+    box = {}
+
+    def worker():
+        box["session"] = client._session()
+
+    thread = threading.Thread(target=worker)
+    thread.start()
+    thread.join()
+    try:
+        assert box["session"] is not main_session, "并发线程共用了同一个 Session"
+    finally:
+        client.close()
+
+
+
 async def test_device_info_enrichment_is_concurrent():
     """新设备的型号/固件要并发拉取：串行 19 台会把启动拖到 8s+。"""
     import threading
@@ -997,6 +1061,8 @@ async def main():
         ("options 加载家庭", test_options_flow_loads_current_families),
         ("options 家庭范围生效", test_coordinator_options_override_family_scope),
         ("legacy bull 配置原位升级", test_coordinator_accepts_legacy_family_scope),
+        ("请求走线程 Session", test_request_path_uses_thread_session),
+        ("Session 线程隔离", test_session_is_thread_local),
         ("设备详情并发补全", test_device_info_enrichment_is_concurrent),
         ("刷新分阶段计时", test_refresh_timings_breakdown),
         ("诊断脱敏老条目家庭", test_diagnostics_redact_legacy_family_scope),
