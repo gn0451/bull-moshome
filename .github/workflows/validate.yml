@@ -59,5 +59,11 @@ jobs:
         run: pip install pytest homeassistant requests cryptography paho-mqtt
       - name: Run offline tests
         run: |
+          python -V
+          pip show homeassistant | head -2
           python -m pytest -q tests/test_client_unit.py
-          python homeassistant/tests/test_e2e.py
+          python homeassistant/tests/test_e2e.py > /tmp/e2e.log 2>&1 || {
+            echo "::error title=e2e 失败::$(grep -E 'FAIL|Error|Traceback' /tmp/e2e.log | tail -3 | tr '\n' ' ' | cut -c1-600)"
+            tail -40 /tmp/e2e.log
+            exit 1
+          }
