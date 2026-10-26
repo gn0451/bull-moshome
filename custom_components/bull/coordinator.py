@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import inspect
 import logging
+import time
 from datetime import timedelta
 
 from homeassistant.config_entries import ConfigEntry
@@ -40,6 +41,9 @@ from .mqtt_listener import BullMqttListener
 
 _LOGGER = logging.getLogger(__name__)
 
+# 单次刷新超过这个时长就打一条 info，方便用户反馈「启动很慢」时有据可查
+SLOW_REFRESH_MS = 5000
+
 
 class BullCoordinator(DataUpdateCoordinator[dict[str, Device]]):
     """Coordinator that keeps Bull devices in sync with the cloud."""
@@ -66,6 +70,8 @@ class BullCoordinator(DataUpdateCoordinator[dict[str, Device]]):
         self._mqtt: BullMqttListener | None = None
         self._mqtt_token: str | None = None
         self.ble_chargers: dict[str, object] = {}
+        # 最近一次刷新的分阶段耗时（毫秒），诊断与日志共用
+        self.last_refresh_timings: dict[str, object] = {}
         self.cloud_chargers: dict[str, object] = {}
 
     @property
@@ -90,7 +96,11 @@ class BullCoordinator(DataUpdateCoordinator[dict[str, Device]]):
     async def _async_update_data(self) -> dict[str, Device]:
         """Fetch data from the cloud (runs on the coordinator's schedule)."""
 
+        overall_started = time.perf_counter()
+
         def _sync_update() -> dict[str, Device]:
+            # 计时边界由协调器控制：只统计本次刷新的请求
+            self.client.request_timings.clear()
             try:
                 if not self.client.access_token:
                     self.client.login(self.username, self.password)
@@ -112,10 +122,41 @@ class BullCoordinator(DataUpdateCoordinator[dict[str, Device]]):
         # dict（防御未来变化），这里同步引用，保证 MQTT 回推与实体读到同一份数据
         if devices is not self.devices:
             self.devices = devices
+        fetch_ms = (time.perf_counter() - overall_started) * 1000
         await self._async_manage_mqtt()
         self._setup_cloud_chargers()
         await self._async_setup_ble_chargers()
+        self._record_timings(fetch_ms, (time.perf_counter() - overall_started) * 1000)
         return devices
+
+    def _record_timings(self, fetch_ms: float, total_ms: float) -> None:
+        """Split the refresh time into login / families / rooms and log it."""
+        per_endpoint = dict(getattr(self.client, "request_timings", {}) or {})
+        login_ms = sum(v for k, v in per_endpoint.items() if "/auth/form" in k)
+        families_ms = sum(
+            v
+            for k, v in per_endpoint.items()
+            if "/v2/families" in k or "/switch" in k
+        )
+        rooms_ms = sum(v for k, v in per_endpoint.items() if "/rooms" in k)
+        self.last_refresh_timings = {
+            "login_ms": round(login_ms, 1),
+            "families_ms": round(families_ms, 1),
+            "rooms_ms": round(rooms_ms, 1),
+            "fetch_ms": round(fetch_ms, 1),
+            "total_ms": round(total_ms, 1),
+            "per_endpoint_ms": per_endpoint,
+        }
+        _LOGGER.debug("刷新耗时明细: %s", self.last_refresh_timings)
+        if total_ms >= SLOW_REFRESH_MS:
+            _LOGGER.info(
+                "刷新耗时 %.1fs（登录 %.0fms / 家庭切换 %.0fms / 设备列表 %.0fms / 其余 %.0fms）",
+                total_ms / 1000,
+                login_ms,
+                families_ms,
+                rooms_ms,
+                max(0.0, total_ms - login_ms - families_ms - rooms_ms),
+            )
 
     def _setup_cloud_chargers(self) -> None:
         from .cloud_charger import BullCloudServiceCharger

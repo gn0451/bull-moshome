@@ -851,6 +851,31 @@ async def test_anonymized_diagnostics():
     assert report["devices"][0]["support_tier"] == "profiled"
 
 
+async def test_refresh_timings_breakdown():
+    """分阶段计时：登录 / 家庭切换 / 设备列表要分别落到对应字段。"""
+    hass = FakeHass()
+    entry = FakeEntry()
+    device = make_fake_device()
+    coordinator = await make_coordinator(hass, entry, device)
+    coordinator.client.request_timings = {
+        "POST /mos/uic/v2/auth/form": 1200.0,
+        "POST /v1/families/{id}/switch": 800.0,
+        "GET /mos/home/v3/rooms": 3000.0,
+    }
+
+    coordinator._record_timings(fetch_ms=5200.0, total_ms=6000.0)
+    timings = coordinator.last_refresh_timings
+    assert timings["login_ms"] == 1200.0, timings
+    assert timings["families_ms"] == 800.0, timings
+    assert timings["rooms_ms"] == 3000.0, timings
+    assert timings["fetch_ms"] == 5200.0, timings
+    assert timings["total_ms"] == 6000.0, timings
+
+    report = await diagnostics_mod.async_get_config_entry_diagnostics(hass, entry)
+    assert report["last_refresh_timings_ms"]["rooms_ms"] == 3000.0, report
+
+
+
 async def test_diagnostics_redact_legacy_family_scope():
     """老条目把家庭存在 selected_families 里：诊断不能泄露它，计数也不能是 0。"""
     hass = FakeHass()
@@ -932,6 +957,7 @@ async def main():
         ("options 加载家庭", test_options_flow_loads_current_families),
         ("options 家庭范围生效", test_coordinator_options_override_family_scope),
         ("legacy bull 配置原位升级", test_coordinator_accepts_legacy_family_scope),
+        ("刷新分阶段计时", test_refresh_timings_breakdown),
         ("诊断脱敏老条目家庭", test_diagnostics_redact_legacy_family_scope),
         ("条目名脱敏迁移", test_migrate_entry_masks_account_title),
         ("匿名诊断", test_anonymized_diagnostics),

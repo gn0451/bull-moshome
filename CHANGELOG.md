@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.3.6
+
+- Time every cloud request and report the refresh breakdown (login / family switch / device
+  list / total) in diagnostics as `last_refresh_timings_ms`, plus a per-endpoint table. A
+  refresh slower than 5 s also logs one info line, so a slow start explains itself.
+- No behaviour change: this is instrumentation for tracking down the ~13 s setup time seen
+  on a real installation.
+
 ## 1.3.5
 
 - Fix diagnostics leaking the family ID for entries migrated from `hass-iotbull`: the legacy

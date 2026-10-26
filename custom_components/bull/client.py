@@ -5,6 +5,8 @@
 """
 
 import json
+import re
+import time
 from dataclasses import dataclass, field
 from urllib.parse import urlencode, urljoin
 
@@ -106,11 +108,37 @@ class BullCloudClient:
         self.username: str | None = None
         self.password: str | None = None
         self._families: list[dict] = []
+        # 每个端点的累计耗时（毫秒），由调用方决定何时清零，用于定位慢请求
+        self.request_timings: dict[str, float] = {}
 
     # ------------------------------------------------------------------ #
     # 基础请求
     # ------------------------------------------------------------------ #
     def _request(
+        self,
+        method: str,
+        path: str,
+        content_type: str = "application/json",
+        body: str = "",
+        query: dict | None = None,
+        extra_headers: dict | None = None,
+        bearer: bool = True,
+    ) -> dict:
+        """按端点记录耗时后转发给 :meth:`_request_impl`。"""
+        started = time.perf_counter()
+        try:
+            return self._request_impl(
+                method, path, content_type, body, query, extra_headers, bearer
+            )
+        finally:
+            # 家庭 ID 等数字段归一化，避免每个家庭各占一个键
+            key = f"{method} {re.sub(r'/[0-9]+', '/{id}', path)}"
+            elapsed = (time.perf_counter() - started) * 1000
+            self.request_timings[key] = round(
+                self.request_timings.get(key, 0.0) + elapsed, 1
+            )
+
+    def _request_impl(
         self,
         method: str,
         path: str,

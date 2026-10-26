@@ -55,6 +55,7 @@ async def async_get_config_entry_diagnostics(hass, entry) -> dict[str, Any]:
         # selected_families 里，自己解析会算成 0。
         "selected_family_count": len(coordinator.family_ids),
         "mqtt_transport": coordinator.mqtt_transport,
+        "last_refresh_timings_ms": coordinator.last_refresh_timings,
         "devices": [_device_report(device) for device in coordinator.devices.values()],
     }
 

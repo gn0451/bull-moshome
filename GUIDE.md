@@ -149,6 +149,7 @@ automation:
 | `support_tier` / `evidence_level` | 判断设备属于「已验证」「有档案」还是「未知设备（默认禁用）」 |
 | `property_identifiers` | 新设备适配时提交这个，比截图准确得多 |
 | `selected_family_count` | 确认家庭范围有没有选对 |
+| `last_refresh_timings_ms` | 最近一次刷新的分阶段耗时（登录 / 家庭切换 / 设备列表 / 总计），排查「启动慢」 |
 
 新设备支持请按 [COMPATIBILITY.md](COMPATIBILITY.md) 的流程提交。
 
