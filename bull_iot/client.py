@@ -159,6 +159,21 @@ class BullCloudClient:
         self._families: list[dict] = []
         # 每个端点的累计耗时（毫秒），由调用方决定何时清零，用于定位慢请求
         self.request_timings: dict[str, float] = {}
+        self.device_info_stats: dict[str, object] = {
+            "status": "idle",
+            "request_count": 0,
+            "cache_hits": 0,
+            "pending_count": 0,
+            "workers": 0,
+            "peak_inflight": 0,
+            "wall_ms": 0.0,
+            "request_sum_ms": 0.0,
+            "succeeded": 0,
+            "failed": 0,
+        }
+        self._device_info_inflight = 0
+        self._device_info_peak = 0
+        self._device_info_request_sum_ms = 0.0
 
     # ------------------------------------------------------------------ #
     # 基础请求
@@ -345,8 +360,14 @@ class BullCloudClient:
         devices: dict[str, Device],
         family_ids: list[int] | None = None,
         info_cache: dict | None = None,
+        fetch_device_info: bool = True,
     ) -> dict[str, Device]:
-        """把各家庭设备刷新进已有缓存（新设备才拉取一次详情，适合定时轮询）。"""
+        """Refresh device state and optionally block for missing static details.
+
+        ``fetch_device_info=False`` still applies fresh cached details, but leaves
+        cache misses for :meth:`enrich_device_info`. Home Assistant uses that
+        fast path so switches become available before model/firmware enrichment.
+        """
         if family_ids is None:
             families = self.get_families()
             family_ids = [f["familyId"] for f in families]
@@ -358,9 +379,12 @@ class BullCloudClient:
             for info in self.get_rooms_and_devices():
                 seen_iot_ids.add(info["iotId"])
                 self._parse_device(devices, info, new_iot_ids)
-        # 新设备的型号/固件要逐台查详情（单台约 400ms），串行会把启动拖到 10s，
-        # 这里用小并发补，失败不影响主流程。
-        self._enrich_device_info(devices, new_iot_ids, info_cache)
+        self._enrich_device_info(
+            devices,
+            new_iot_ids,
+            info_cache,
+            fetch_missing=fetch_device_info,
+        )
 
         # Only prune after every selected family completed successfully. This
         # removes devices deleted from MosHome without turning a partial cloud
@@ -417,11 +441,14 @@ class BullCloudClient:
         devices: dict[str, Device],
         iot_ids: list[str],
         info_cache: dict | None = None,
-    ) -> None:
-        """Fetch model/firmware for new devices, using the cache when possible."""
+        *,
+        fetch_missing: bool = True,
+    ) -> dict[str, object]:
+        """Apply cached details and optionally fetch misses with bounded concurrency."""
         # Device.detail 默认是 {}，所以用「空字典」表示还没拉过；
         # 拉取失败的设备会写入占位标记，避免每轮刷新都重试。
-        todo: list[str] = []
+        todo: list[Device] = []
+        cache_hits = 0
         for iot_id in dict.fromkeys(iot_ids):
             device = devices.get(iot_id)
             if device is None or device.detail:
@@ -429,26 +456,83 @@ class BullCloudClient:
             cached = _cached_detail(info_cache, iot_id)
             if cached is not None:
                 self._apply_device_detail(device, cached)
+                cache_hits += 1
                 continue
-            todo.append(iot_id)
-        if not todo:
-            return
+            todo.append(device)
+        if not fetch_missing or not todo:
+            self.device_info_stats = {
+                "status": "deferred" if todo else "completed",
+                "request_count": 0,
+                "cache_hits": cache_hits,
+                "pending_count": len(todo),
+                "workers": 0,
+                "peak_inflight": 0,
+                "wall_ms": 0.0,
+                "request_sum_ms": 0.0,
+                "succeeded": 0,
+                "failed": 0,
+            }
+            return dict(self.device_info_stats)
+
         workers = max(1, min(self.device_info_workers, len(todo)))
-        if workers == 1:
-            for iot_id in todo:
-                self._fetch_device_info(devices[iot_id], info_cache)
-            return
-        with ThreadPoolExecutor(
-            max_workers=workers, thread_name_prefix="bull-info"
-        ) as pool:
-            list(
-                pool.map(
-                    lambda iot_id: self._fetch_device_info(
-                        devices[iot_id], info_cache
-                    ),
-                    todo,
-                )
-            )
+        with self._timings_lock:
+            self._device_info_inflight = 0
+            self._device_info_peak = 0
+            self._device_info_request_sum_ms = 0.0
+        started = time.perf_counter()
+        self.device_info_stats = {
+            "status": "running",
+            "request_count": len(todo),
+            "cache_hits": cache_hits,
+            "pending_count": len(todo),
+            "workers": workers,
+        }
+        results: list[bool] = []
+        error: Exception | None = None
+        try:
+            if workers == 1:
+                results = [
+                    self._fetch_device_info(device, info_cache) for device in todo
+                ]
+            else:
+                with ThreadPoolExecutor(
+                    max_workers=workers, thread_name_prefix="bull-info"
+                ) as pool:
+                    results = list(
+                        pool.map(
+                            lambda device: self._fetch_device_info(device, info_cache),
+                            todo,
+                        )
+                    )
+        except Exception as err:  # noqa: BLE001 - record diagnostics, then re-raise
+            error = err
+        finally:
+            wall_ms = (time.perf_counter() - started) * 1000
+            with self._timings_lock:
+                request_sum_ms = self._device_info_request_sum_ms
+                peak_inflight = self._device_info_peak
+            succeeded = sum(results)
+            self.device_info_stats = {
+                "status": "failed" if error else "completed",
+                "request_count": len(todo),
+                "cache_hits": cache_hits,
+                "pending_count": 0 if error is None else len(todo) - len(results),
+                "workers": workers,
+                "peak_inflight": peak_inflight,
+                "wall_ms": round(wall_ms, 1),
+                "request_sum_ms": round(request_sum_ms, 1),
+                "succeeded": succeeded,
+                "failed": len(todo) - succeeded,
+            }
+        if error is not None:
+            raise error
+        return dict(self.device_info_stats)
+
+    def enrich_device_info(
+        self, devices: dict[str, Device], info_cache: dict | None = None
+    ) -> dict[str, object]:
+        """Fetch missing model/firmware details after the primary refresh."""
+        return self._enrich_device_info(devices, list(devices), info_cache)
 
     @staticmethod
     def _apply_device_detail(device: Device, detail: dict) -> None:
@@ -459,17 +543,37 @@ class BullCloudClient:
             detail.get("firmwareVersion", "") or device.firmware_version
         )
 
-    def _fetch_device_info(self, device: Device, info_cache: dict | None = None) -> None:
+    def _fetch_device_info(
+        self, device: Device, info_cache: dict | None = None
+    ) -> bool:
         """Fill model/firmware from ``deviceInfo``; failures must not break refresh."""
+        started = time.perf_counter()
+        with self._timings_lock:
+            self._device_info_inflight += 1
+            self._device_info_peak = max(
+                self._device_info_peak, self._device_info_inflight
+            )
         try:
-            detail = self.get_device_info(device.iot_id)
-        except BullCloudError:
-            # 标记已尝试（真值），避免每轮刷新都重试同一台失败设备
-            device.detail = {"_unavailable": True}
-            return
-        self._apply_device_detail(device, detail)
-        if info_cache is not None:
-            info_cache[device.iot_id] = {"ts": time.time(), "detail": detail}
+            try:
+                detail = self.get_device_info(device.iot_id)
+            except BullCloudError:
+                # 标记已尝试（真值），避免每轮刷新都重试同一台失败设备
+                device.detail = {"_unavailable": True}
+                return False
+            self._apply_device_detail(device, detail)
+            if info_cache is not None:
+                with self._timings_lock:
+                    info_cache[device.iot_id] = {
+                        "ts": time.time(),
+                        "detail": detail,
+                    }
+            return True
+        finally:
+            with self._timings_lock:
+                self._device_info_inflight -= 1
+                self._device_info_request_sum_ms += (
+                    time.perf_counter() - started
+                ) * 1000
 
     # 兼容旧引用的静态方法入口
     _flatten_properties = staticmethod(flatten_properties)

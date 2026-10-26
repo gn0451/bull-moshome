@@ -81,6 +81,9 @@ class FakeHass:
     async def async_add_executor_job(self, func, *args):
         return func(*args)
 
+    def async_create_task(self, target, name=None):
+        return self.loop.create_task(target, name=name)
+
 
 class FakeEntry:
     def __init__(self, data=None, options=None):
@@ -150,7 +153,7 @@ async def make_coordinator(hass, entry, device=None):
     """构造 coordinator、执行首刷、注册进 hass.data（模拟 __init__.py 的行为）。"""
     client = make_fake_client()
     if device is not None:
-        client.refresh_devices.side_effect = lambda d, f=None, c=None: {
+        client.refresh_devices.side_effect = lambda d, f=None, c=None, **kwargs: {
             **d,
             device.iot_id: device,
         }
@@ -299,6 +302,9 @@ async def test_coordinator_first_refresh():
     assert coordinator.client.login.call_count == 0  # token 有效，无需登录
     assert coordinator.client.refresh_devices.call_count == 1
     assert coordinator.client.refresh_devices.call_args.args[1] == [1001]
+    assert coordinator.client.refresh_devices.call_args.kwargs == {
+        "fetch_device_info": False
+    }
 
 
 async def test_coordinator_login_when_no_token():
@@ -309,7 +315,10 @@ async def test_coordinator_login_when_no_token():
 
     client = make_fake_client()
     client.access_token = None
-    client.refresh_devices.side_effect = lambda d, f=None, c=None: {**d, device.iot_id: device}
+    client.refresh_devices.side_effect = lambda d, f=None, c=None, **kwargs: {
+        **d,
+        device.iot_id: device,
+    }
     with patch.object(coord_mod, "BullCloudClient", return_value=client):
         coordinator = coord_mod.BullCoordinator(hass, entry)
     data = await coordinator._async_update_data()
@@ -324,14 +333,14 @@ async def test_coordinator_token_recovery():
     client = make_fake_client()
     device = make_fake_device()
 
-    def refresh_devices(devices, family_ids=None, info_cache=None):
+    def refresh_devices(devices, family_ids=None, info_cache=None, **kwargs):
         devices[device.iot_id] = device
         return devices
 
-    def flaky_refresh(devices, family_ids=None, info_cache=None):
+    def flaky_refresh(devices, family_ids=None, info_cache=None, **kwargs):
         if not client.login.called:
             raise BullCloudError("refresh", code=9008, message="token 失效")
-        return refresh_devices(devices, family_ids, info_cache)
+        return refresh_devices(devices, family_ids, info_cache, **kwargs)
 
     client.refresh_devices.side_effect = flaky_refresh
 
@@ -348,7 +357,7 @@ async def test_coordinator_relogin_failure_raises_auth_failed():
     entry = FakeEntry()
     client = make_fake_client()
 
-    def always_9008(devices, family_ids=None, info_cache=None):
+    def always_9008(devices, family_ids=None, info_cache=None, **kwargs):
         raise BullCloudError("refresh", code=9008, message="token 失效")
 
     client.refresh_devices.side_effect = always_9008
@@ -855,10 +864,11 @@ async def test_anonymized_diagnostics():
     assert "1001" not in serialized
     assert "PowerSwitch_1" in serialized
     assert report["devices"][0]["support_tier"] == "profiled"
+    assert "device_info_enrichment" in report
 
 
-async def test_info_cache_saved_immediately_when_grown():
-    """缓存新增要立即落盘：否则用户装完马上重启会丢缓存，误以为优化没生效。"""
+async def test_info_cache_saved_immediately_when_changed():
+    """缓存新增或刷新要立即落盘，避免快速重启后再次请求详情。"""
     hass = FakeHass()
     entry = FakeEntry()
     device = make_fake_device()
@@ -869,12 +879,12 @@ async def test_info_cache_saved_immediately_when_grown():
     coordinator._store.async_delay_save = MagicMock()
     coordinator._info_cache = {"iot_a": {"ts": 1.0, "detail": {"modelName": "M"}}}
 
-    await coordinator._async_persist_info_cache(grew=True)
+    await coordinator._async_persist_info_cache(changed=True)
     coordinator._store.async_save.assert_awaited_once()
     coordinator._store.async_delay_save.assert_not_called()
 
     coordinator._store.async_save.reset_mock()
-    await coordinator._async_persist_info_cache(grew=False)
+    await coordinator._async_persist_info_cache(changed=False)
     coordinator._store.async_save.assert_not_awaited()
     coordinator._store.async_delay_save.assert_called_once()
 
@@ -896,6 +906,91 @@ async def test_info_cache_loads_from_store():
     coordinator._store.async_load = AsyncMock(return_value=stored)
     await coordinator.async_load_info_cache()
     assert coordinator.info_cache_size == 1, coordinator.info_cache_size
+
+
+async def test_device_info_deferred_until_background_enrichment():
+    """HA 首刷只用缓存；缺失详情随后补全，不能阻塞开关实体上线。"""
+    from bull.client import BullCloudClient
+
+    client = BullCloudClient()
+    devices = {"iot_a": Device(iot_id="iot_a", product_id=1)}
+    cache = {}
+    called = []
+
+    def fake_info(iot_id):
+        called.append(iot_id)
+        return {
+            "productName": "P",
+            "modelName": "M-1",
+            "firmwareVersion": "1.0",
+        }
+
+    client.get_device_info = fake_info
+    try:
+        deferred = client._enrich_device_info(
+            devices, ["iot_a"], cache, fetch_missing=False
+        )
+        assert called == [], called
+        assert deferred["status"] == "deferred", deferred
+        assert deferred["pending_count"] == 1, deferred
+        completed = client.enrich_device_info(devices, cache)
+    finally:
+        client.close()
+
+    assert called == ["iot_a"], called
+    assert completed["status"] == "completed", completed
+    assert completed["request_count"] == 1, completed
+    assert completed["peak_inflight"] == 1, completed
+    assert devices["iot_a"].model_name == "M-1"
+    assert cache["iot_a"]["detail"]["modelName"] == "M-1"
+
+
+async def test_coordinator_background_enrichment_persists_and_publishes():
+    """后台补全完成后立即落盘，并通知实体和设备注册表刷新元数据。"""
+    hass = FakeHass()
+    entry = FakeEntry()
+    device = make_fake_device()
+    coordinator = await make_coordinator(hass, entry, device)
+    coordinator._store = MagicMock()
+    coordinator._store.async_save = AsyncMock()
+    coordinator._store.async_delay_save = MagicMock()
+    coordinator._async_setup_ble_chargers = AsyncMock()
+    coordinator._async_refresh_device_registry_metadata = MagicMock()
+    coordinator.async_set_updated_data = MagicMock()
+
+    def enrich(devices, cache):
+        detail = {
+            "productName": "G27",
+            "modelName": "G27S312",
+            "firmwareVersion": "2.0",
+        }
+        devices[device.iot_id].detail = detail
+        devices[device.iot_id].model_name = detail["modelName"]
+        cache[device.iot_id] = {"ts": 1.0, "detail": detail}
+        return {
+            "status": "completed",
+            "request_count": 1,
+            "cache_hits": 0,
+            "pending_count": 0,
+            "workers": 1,
+            "peak_inflight": 1,
+            "wall_ms": 10.0,
+            "request_sum_ms": 9.0,
+            "succeeded": 1,
+            "failed": 0,
+        }
+
+    coordinator.client.enrich_device_info.side_effect = enrich
+    coordinator.start_device_info_enrichment()
+    task = coordinator._device_info_task
+    assert task is not None, "缺失详情没有调度后台任务"
+    await task
+
+    coordinator._store.async_save.assert_awaited_once()
+    coordinator._async_setup_ble_chargers.assert_awaited_once()
+    coordinator._async_refresh_device_registry_metadata.assert_called_once()
+    coordinator.async_set_updated_data.assert_called_once_with(coordinator.devices)
+    assert coordinator.device_info_enrichment["peak_inflight"] == 1
 
 
 
@@ -1072,11 +1167,16 @@ async def test_device_info_enrichment_is_concurrent():
 
     client.get_device_info = fake_info
     try:
-        client._enrich_device_info(devices, list(devices))
+        stats = client._enrich_device_info(devices, list(devices))
     finally:
         client.close()
 
     assert state["max"] > 1, "设备详情没有并发，仍是串行请求"
+    assert stats["workers"] == 4, stats
+    assert stats["peak_inflight"] == 4, stats
+    assert stats["request_count"] == 8, stats
+    assert stats["succeeded"] == 8, stats
+    assert stats["request_sum_ms"] > stats["wall_ms"], stats
     assert all(
         d.model_name == f"M-{d.iot_id}" and d.detail for d in devices.values()
     ), [d.model_name for d in devices.values()]
@@ -1189,8 +1289,13 @@ async def main():
         ("options 加载家庭", test_options_flow_loads_current_families),
         ("options 家庭范围生效", test_coordinator_options_override_family_scope),
         ("legacy bull 配置原位升级", test_coordinator_accepts_legacy_family_scope),
-        ("缓存新增立即落盘", test_info_cache_saved_immediately_when_grown),
+        ("缓存变化立即落盘", test_info_cache_saved_immediately_when_changed),
         ("设备信息缓存装载", test_info_cache_loads_from_store),
+        ("设备详情延迟补全", test_device_info_deferred_until_background_enrichment),
+        (
+            "协调器后台补全",
+            test_coordinator_background_enrichment_persists_and_publishes,
+        ),
         ("路径归一化", test_path_normalization_groups_device_ids),
         ("设备信息缓存命中", test_device_info_cache_avoids_refetch),
         ("设备信息缓存过期", test_device_info_cache_expires),

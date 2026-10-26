@@ -9,6 +9,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import inspect
 import logging
 import time
@@ -17,6 +18,7 @@ from datetime import timedelta
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import ConfigEntryAuthFailed, HomeAssistantError
+from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 from homeassistant.helpers.storage import Store
 
@@ -77,6 +79,9 @@ class BullCoordinator(DataUpdateCoordinator[dict[str, Device]]):
         # 设备型号/固件是静态信息，持久化缓存避免每次重启都重拉 19 次详情
         self._info_cache: dict[str, object] = {}
         self._store = Store(hass, 1, f"{DOMAIN}_{entry.entry_id}_device_info")
+        self._platforms_ready = False
+        self._device_info_task: asyncio.Task[None] | None = None
+        self.device_info_enrichment: dict[str, object] = {"status": "idle"}
 
     async def async_load_info_cache(self) -> None:
         """Load the persisted deviceInfo cache (model/firmware rarely changes)."""
@@ -116,7 +121,6 @@ class BullCoordinator(DataUpdateCoordinator[dict[str, Device]]):
         """Fetch data from the cloud (runs on the coordinator's schedule)."""
 
         overall_started = time.perf_counter()
-        cache_before = len(self._info_cache)
 
         def _sync_update() -> dict[str, Device]:
             # 计时边界由协调器控制：只统计本次刷新的请求
@@ -125,7 +129,10 @@ class BullCoordinator(DataUpdateCoordinator[dict[str, Device]]):
                 if not self.client.access_token:
                     self.client.login(self.username, self.password)
                 return self.client.refresh_devices(
-                    self.devices, self.family_ids, self._info_cache
+                    self.devices,
+                    self.family_ids,
+                    self._info_cache,
+                    fetch_device_info=False,
                 )
             except AuthenticationError as err:
                 raise ConfigEntryAuthFailed(str(err)) from err
@@ -137,8 +144,11 @@ class BullCoordinator(DataUpdateCoordinator[dict[str, Device]]):
                     except AuthenticationError as auth_err:
                         raise ConfigEntryAuthFailed(str(auth_err)) from auth_err
                     return self.client.refresh_devices(
-                    self.devices, self.family_ids, self._info_cache
-                )
+                        self.devices,
+                        self.family_ids,
+                        self._info_cache,
+                        fetch_device_info=False,
+                    )
                 raise UpdateFailed(str(err)) from err
 
         devices = await self.hass.async_add_executor_job(_sync_update)
@@ -151,19 +161,92 @@ class BullCoordinator(DataUpdateCoordinator[dict[str, Device]]):
         self._setup_cloud_chargers()
         await self._async_setup_ble_chargers()
         self._record_timings(fetch_ms, (time.perf_counter() - overall_started) * 1000)
-        await self._async_persist_info_cache(len(self._info_cache) > cache_before)
+        if self._platforms_ready:
+            self._schedule_device_info_enrichment()
         return devices
 
-    async def _async_persist_info_cache(self, grew: bool) -> None:
+    @callback
+    def start_device_info_enrichment(self) -> None:
+        """Allow missing static details to load after entity platforms are ready."""
+        self._platforms_ready = True
+        self._schedule_device_info_enrichment()
+
+    @callback
+    def _schedule_device_info_enrichment(self) -> None:
+        """Start at most one non-blocking deviceInfo enrichment task."""
+        if self._device_info_task is not None and not self._device_info_task.done():
+            return
+        pending = sum(1 for device in self.devices.values() if not device.detail)
+        if not pending:
+            self.device_info_enrichment = dict(self.client.device_info_stats)
+            return
+        self.device_info_enrichment = {
+            "status": "scheduled",
+            "pending_count": pending,
+        }
+        self._device_info_task = self.hass.async_create_task(
+            self._async_enrich_device_info(), "Bull deviceInfo enrichment"
+        )
+
+    async def _async_enrich_device_info(self) -> None:
+        """Fetch cache misses without delaying entity setup or switch control."""
+        cache_before = len(self._info_cache)
+        self.device_info_enrichment = {
+            "status": "running",
+            "pending_count": sum(
+                1 for device in self.devices.values() if not device.detail
+            ),
+        }
+        try:
+            stats = await self.hass.async_add_executor_job(
+                self.client.enrich_device_info,
+                self.devices,
+                self._info_cache,
+            )
+            cache_changed = bool(stats.get("succeeded")) or (
+                len(self._info_cache) > cache_before
+            )
+            await self._async_persist_info_cache(cache_changed)
+            await self._async_setup_ble_chargers()
+            self._async_refresh_device_registry_metadata()
+            self.async_set_updated_data(self.devices)
+            self.device_info_enrichment = dict(stats)
+        except Exception as err:  # noqa: BLE001 - static details must not break control
+            self.device_info_enrichment = {
+                **dict(getattr(self.client, "device_info_stats", {}) or {}),
+                "status": "failed",
+                "error_type": type(err).__name__,
+            }
+            _LOGGER.warning("后台补全设备型号/固件失败，设备控制不受影响", exc_info=True)
+        finally:
+            self._device_info_task = None
+
+    @callback
+    def _async_refresh_device_registry_metadata(self) -> None:
+        """Apply background model/firmware results to existing HA devices."""
+        registry = dr.async_get(self.hass)
+        for device in self.devices.values():
+            entry = registry.async_get_device(identifiers={(DOMAIN, device.iot_id)})
+            if entry is None:
+                continue
+            model = device.model_name or device.product_name or None
+            changes = {}
+            if model and entry.model != model:
+                changes["model"] = model
+            if device.firmware_version and entry.sw_version != device.firmware_version:
+                changes["sw_version"] = device.firmware_version
+            if changes:
+                registry.async_update_device(entry.id, **changes)
+
+    async def _async_persist_info_cache(self, changed: bool) -> None:
         """Persist the deviceInfo cache.
 
-        缓存**新增**时立即落盘：延迟写入会让「装完马上重启」的用户丢掉缓存，
-        第二次启动依旧慢，看起来像优化没生效。没有新增时仍用延迟写入，避免
-        每次轮询都写盘。
+        缓存新增或过期内容刷新时立即落盘：延迟写入会让「装完马上重启」的用户
+        丢掉缓存，第二次启动依旧慢。没有变化时仍用延迟写入，避免每次轮询都写盘。
         """
         if not self._info_cache:
             return
-        if grew:
+        if changed:
             try:
                 await self._store.async_save(self._info_cache)
             except Exception:  # noqa: BLE001 - 落盘失败不影响本次刷新
@@ -393,11 +476,11 @@ class BullCoordinator(DataUpdateCoordinator[dict[str, Device]]):
     # ------------------------------------------------------------------ #
     async def async_shutdown(self) -> None:
         await self._async_stop_mqtt()
+        if self._device_info_task is not None:
+            await self._device_info_task
         chargers = list(self.ble_chargers.values())
         self.ble_chargers.clear()
         if chargers:
-            import asyncio
-
             await asyncio.gather(
                 *(charger.async_stop() for charger in chargers),
                 return_exceptions=True,

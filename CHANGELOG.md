@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.3.11
+
+- Make Home Assistant's primary refresh non-blocking for missing `deviceInfo`: login,
+  family selection and `/rooms` now make entities controllable first; model and firmware
+  enrichment runs afterwards in a bounded four-worker background task.
+- Preserve the seven-day persistent cache from 1.3.9. Cache hits are still applied during
+  the primary refresh, while new or expired entries are fetched and saved immediately in
+  the background. BLE setup and the HA device registry are refreshed when enrichment ends.
+- Add privacy-safe enrichment diagnostics: request/cache/pending counts, configured workers,
+  observed peak concurrency, wall time, summed request time and success/failure counts.
+  This separates cloud throttling from accidental executor serialization.
+
 ## 1.3.10
 
 - Write the `deviceInfo` cache to disk **immediately** when it gains new entries, instead of
