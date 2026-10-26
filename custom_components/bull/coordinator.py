@@ -116,6 +116,7 @@ class BullCoordinator(DataUpdateCoordinator[dict[str, Device]]):
         """Fetch data from the cloud (runs on the coordinator's schedule)."""
 
         overall_started = time.perf_counter()
+        cache_before = len(self._info_cache)
 
         def _sync_update() -> dict[str, Device]:
             # 计时边界由协调器控制：只统计本次刷新的请求
@@ -150,10 +151,25 @@ class BullCoordinator(DataUpdateCoordinator[dict[str, Device]]):
         self._setup_cloud_chargers()
         await self._async_setup_ble_chargers()
         self._record_timings(fetch_ms, (time.perf_counter() - overall_started) * 1000)
-        if self._info_cache:
-            # 延迟写入，避免每次轮询都落盘
-            self._store.async_delay_save(lambda: self._info_cache, 120)
+        await self._async_persist_info_cache(len(self._info_cache) > cache_before)
         return devices
+
+    async def _async_persist_info_cache(self, grew: bool) -> None:
+        """Persist the deviceInfo cache.
+
+        缓存**新增**时立即落盘：延迟写入会让「装完马上重启」的用户丢掉缓存，
+        第二次启动依旧慢，看起来像优化没生效。没有新增时仍用延迟写入，避免
+        每次轮询都写盘。
+        """
+        if not self._info_cache:
+            return
+        if grew:
+            try:
+                await self._store.async_save(self._info_cache)
+            except Exception:  # noqa: BLE001 - 落盘失败不影响本次刷新
+                _LOGGER.debug("保存设备信息缓存失败", exc_info=True)
+            return
+        self._store.async_delay_save(lambda: self._info_cache, 120)
 
     def _record_timings(self, fetch_ms: float, total_ms: float) -> None:
         """Split the refresh time into login / families / rooms and log it."""

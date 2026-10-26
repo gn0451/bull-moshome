@@ -857,6 +857,29 @@ async def test_anonymized_diagnostics():
     assert report["devices"][0]["support_tier"] == "profiled"
 
 
+async def test_info_cache_saved_immediately_when_grown():
+    """缓存新增要立即落盘：否则用户装完马上重启会丢缓存，误以为优化没生效。"""
+    hass = FakeHass()
+    entry = FakeEntry()
+    device = make_fake_device()
+    coordinator = await make_coordinator(hass, entry, device)
+
+    coordinator._store = MagicMock()
+    coordinator._store.async_save = AsyncMock()
+    coordinator._store.async_delay_save = MagicMock()
+    coordinator._info_cache = {"iot_a": {"ts": 1.0, "detail": {"modelName": "M"}}}
+
+    await coordinator._async_persist_info_cache(grew=True)
+    coordinator._store.async_save.assert_awaited_once()
+    coordinator._store.async_delay_save.assert_not_called()
+
+    coordinator._store.async_save.reset_mock()
+    await coordinator._async_persist_info_cache(grew=False)
+    coordinator._store.async_save.assert_not_awaited()
+    coordinator._store.async_delay_save.assert_called_once()
+
+
+
 async def test_info_cache_loads_from_store():
     """Store 读取路径要真的走通（1.3.7 的教训：别让整条路径没人执行）。"""
     hass = FakeHass()
@@ -1166,6 +1189,7 @@ async def main():
         ("options 加载家庭", test_options_flow_loads_current_families),
         ("options 家庭范围生效", test_coordinator_options_override_family_scope),
         ("legacy bull 配置原位升级", test_coordinator_accepts_legacy_family_scope),
+        ("缓存新增立即落盘", test_info_cache_saved_immediately_when_grown),
         ("设备信息缓存装载", test_info_cache_loads_from_store),
         ("路径归一化", test_path_normalization_groups_device_ids),
         ("设备信息缓存命中", test_device_info_cache_avoids_refetch),

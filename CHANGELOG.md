@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.3.10
+
+- Write the `deviceInfo` cache to disk **immediately** when it gains new entries, instead of
+  waiting 120 s. With the delayed write, restarting Home Assistant shortly after the first
+  start dropped the cache and the next start was slow again — indistinguishable from the
+  optimisation not working at all.
+
 ## 1.3.9
 
 - Persist per-device `deviceInfo` (model / firmware) in Home Assistant storage and reuse it
